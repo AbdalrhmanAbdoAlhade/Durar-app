@@ -3,20 +3,37 @@
 namespace App\Services;
 
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
+use Kreait\Firebase\Contract\Messaging;
 use Kreait\Firebase\Factory;
 use Kreait\Firebase\Messaging\CloudMessage;
 use Kreait\Firebase\Messaging\MulticastSendReport;
 use Kreait\Firebase\Messaging\Notification as FcmNotification;
-use Illuminate\Support\Facades\Log;
 
 class NotificationService
 {
-    protected \Kreait\Firebase\Contract\Messaging $messaging;
+    protected ?Messaging $messaging = null;
 
-    public function __construct()
+    /**
+     * Built lazily so the app (and tests) don't crash when Firebase
+     * credentials are not configured yet.
+     */
+    protected function messaging(): ?Messaging
     {
-        $this->messaging = (new Factory)
-            ->withServiceAccount(config('firebase.credentials'))
+        if ($this->messaging) {
+            return $this->messaging;
+        }
+
+        $credentials = config('firebase.credentials');
+
+        if (! $credentials || ! is_file($credentials)) {
+            Log::warning('Firebase credentials file not found, skipping push notification', ['path' => $credentials]);
+
+            return null;
+        }
+
+        return $this->messaging = (new Factory)
+            ->withServiceAccount($credentials)
             ->createMessaging();
     }
 
@@ -33,12 +50,18 @@ class NotificationService
 
     protected function sendToTokens(array $tokens, string $title, string $body, array $data, ?User $user = null): void
     {
+        $messaging = $this->messaging();
+
+        if (! $messaging) {
+            return;
+        }
+
         $message = CloudMessage::new()
             ->withNotification(FcmNotification::create($title, $body))
             ->withData($data);
 
         try {
-            $report = $this->messaging->sendMulticast($message, $tokens);
+            $report = $messaging->sendMulticast($message, $tokens);
             $this->pruneInvalidTokens($report, $user);
         } catch (\Throwable $e) {
             Log::error('FCM send failed', ['error' => $e->getMessage()]);

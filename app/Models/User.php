@@ -14,11 +14,14 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
+    // Must match the guard_name used in database/sql/seed_roles_permissions.sql
+    protected $guard_name = 'sanctum';
+
     protected $fillable = [
         'name',
         'email',
-        'password',
         'phone',
+        'password',
     ];
 
     protected $hidden = [

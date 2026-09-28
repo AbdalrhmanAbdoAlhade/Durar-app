@@ -17,7 +17,7 @@ class AuctionResource extends JsonResource
             'description_ar' => $this->description_ar,
             'description_en' => $this->description_en,
             'cover_image' => $this->cover_image,
-            'gallery' => ProductImageResource::collection($this->whenLoaded('images')),
+            'gallery' => AuctionImageResource::collection($this->whenLoaded('images')),
             'metadata' => $this->metadata,
             'starting_price' => (float) $this->starting_price,
             'current_price' => (float) $this->current_price,

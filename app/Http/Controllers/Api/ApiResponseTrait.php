@@ -4,26 +4,21 @@ namespace App\Http\Controllers\Api;
 
 trait ApiResponseTrait
 {
-    protected function success($data = null, string $message = '', int $code = 200)
+    protected function success($data = null, string $message = 'Success', int $code = 200)
     {
         return response()->json([
             'success' => true,
             'message' => $message,
-            'data'    => $data,
+            'data' => $data,
         ], $code);
     }
 
-    protected function error(string $message = '', int $code = 400, $errors = null)
+    protected function error(string $message = 'Error', int $code = 400, $errors = null)
     {
-        $payload = [
+        return response()->json([
             'success' => false,
             'message' => $message,
-        ];
-
-        if ($errors !== null) {
-            $payload['errors'] = $errors;
-        }
-
-        return response()->json($payload, $code);
+            'errors' => $errors,
+        ], $code);
     }
 }
