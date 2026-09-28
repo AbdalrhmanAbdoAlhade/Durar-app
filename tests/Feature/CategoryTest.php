@@ -5,19 +5,12 @@ namespace Tests\Feature;
 use App\Models\Category;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Laravel\Sanctum\Sanctum;
-use Spatie\Permission\Models\Role;
+use Tests\CreatesAdmin;
 use Tests\TestCase;
 
 class CategoryTest extends TestCase
 {
-    use RefreshDatabase;
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
-    }
+    use RefreshDatabase, CreatesAdmin;
 
     public function test_public_can_list_categories(): void
     {
@@ -26,6 +19,7 @@ class CategoryTest extends TestCase
         $response = $this->getJson('/api/categories');
 
         $response->assertOk()
+            ->assertJsonPath('success', true)
             ->assertJsonStructure(['success', 'data']);
     }
 
@@ -39,16 +33,22 @@ class CategoryTest extends TestCase
             ->assertJsonPath('data.id', $category->id);
     }
 
+    public function test_guest_cannot_create_category(): void
+    {
+        $this->postJson('/api/admin/categories', [
+            'name_ar' => 'أحجار',
+            'name_en' => 'Stones',
+        ])->assertStatus(401);
+    }
+
     public function test_admin_can_create_category(): void
     {
-        $admin = User::factory()->create();
-        $admin->assignRole('admin');
-        Sanctum::actingAs($admin);
+        $admin = $this->createAdmin();
 
-        $response = $this->postJson('/api/admin/categories', [
-            'name_ar'   => 'أحجار',
-            'name_en'   => 'Stones',
-            'slug'      => 'stones',
+        $response = $this->actingAs($admin, 'sanctum')->postJson('/api/admin/categories', [
+            'name_ar' => 'أحجار',
+            'name_en' => 'Stones',
+            'slug' => 'stones',
             'is_active' => true,
         ]);
 
@@ -58,15 +58,21 @@ class CategoryTest extends TestCase
         $this->assertDatabaseHas('categories', ['name_en' => 'Stones', 'slug' => 'stones']);
     }
 
+    public function test_create_category_validates_required_fields(): void
+    {
+        $this->actingAs($this->createAdmin(), 'sanctum')
+            ->postJson('/api/admin/categories', [])
+            ->assertStatus(422);
+    }
+
     public function test_customer_cannot_create_category(): void
     {
         $user = User::factory()->create();
-        Sanctum::actingAs($user);
 
-        $response = $this->postJson('/api/admin/categories', [
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/admin/categories', [
             'name_ar' => 'أحجار',
             'name_en' => 'Stones',
-            'slug'    => 'stones-2',
+            'slug' => 'stones-2',
         ]);
 
         $response->assertForbidden();
@@ -74,13 +80,10 @@ class CategoryTest extends TestCase
 
     public function test_admin_can_update_category(): void
     {
-        $admin = User::factory()->create();
-        $admin->assignRole('admin');
-        Sanctum::actingAs($admin);
-
+        $admin = $this->createAdmin();
         $category = Category::factory()->create();
 
-        $response = $this->putJson("/api/admin/categories/{$category->id}", [
+        $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/categories/{$category->id}", [
             'name_ar' => 'محدث',
             'name_en' => 'Updated',
         ]);
@@ -89,17 +92,32 @@ class CategoryTest extends TestCase
             ->assertJsonPath('data.name_en', 'Updated');
     }
 
-    public function test_admin_can_delete_category(): void
+    public function test_customer_cannot_update_category(): void
     {
-        $admin = User::factory()->create();
-        $admin->assignRole('admin');
-        Sanctum::actingAs($admin);
-
         $category = Category::factory()->create();
 
-        $response = $this->deleteJson("/api/admin/categories/{$category->id}");
+        $this->actingAs(User::factory()->create(), 'sanctum')
+            ->putJson("/api/admin/categories/{$category->id}", ['name_en' => 'Hack'])
+            ->assertForbidden();
+    }
+
+    public function test_admin_can_delete_category(): void
+    {
+        $admin = $this->createAdmin();
+        $category = Category::factory()->create();
+
+        $response = $this->actingAs($admin, 'sanctum')->deleteJson("/api/admin/categories/{$category->id}");
 
         $response->assertOk();
         $this->assertDatabaseMissing('categories', ['id' => $category->id]);
+    }
+
+    public function test_customer_cannot_delete_category(): void
+    {
+        $category = Category::factory()->create();
+
+        $this->actingAs(User::factory()->create(), 'sanctum')
+            ->deleteJson("/api/admin/categories/{$category->id}")
+            ->assertForbidden();
     }
 }

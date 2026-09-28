@@ -5,109 +5,171 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\Review;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Laravel\Sanctum\Sanctum;
-use Spatie\Permission\Models\Role;
+use Tests\CreatesAdmin;
 use Tests\TestCase;
 
 class ReviewTest extends TestCase
 {
-    use RefreshDatabase;
-
-    protected Product $product;
+    use RefreshDatabase, CreatesAdmin;
 
     protected function setUp(): void
     {
         parent::setUp();
-        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
-        $this->product = Product::factory()->create(['is_active' => true]);
+
+        $this->mock(NotificationService::class)->shouldIgnoreMissing();
     }
 
-    public function test_public_sees_only_approved_reviews(): void
+    protected function items($response): array
     {
-        Review::factory()->create([
-            'product_id'  => $this->product->id,
+        return $response->json('data.data') ?? $response->json('data');
+    }
+
+    public function test_new_review_is_pending_and_hidden_from_public(): void
+    {
+        $product = Product::factory()->create();
+        $user = User::factory()->create();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/products/{$product->id}/reviews", ['rating' => 5, 'comment' => 'great'])
+            ->assertStatus(201);
+
+        $this->assertDatabaseHas('reviews', ['product_id' => $product->id, 'is_approved' => false]);
+
+        $response = $this->getJson("/api/products/{$product->id}/reviews")->assertOk();
+        $this->assertCount(0, $this->items($response));
+    }
+
+    public function test_approved_review_is_visible_publicly(): void
+    {
+        $product = Product::factory()->create();
+        Review::create([
+            'product_id' => $product->id,
+            'user_id' => User::factory()->create()->id,
+            'rating' => 5,
             'is_approved' => true,
         ]);
-        Review::factory()->create([
-            'product_id'  => $this->product->id,
-            'is_approved' => false,
-        ]);
 
-        $response = $this->getJson("/api/products/{$this->product->id}/reviews");
-
-        $response->assertOk();
-        $this->assertCount(1, $response->json('data'));
+        $response = $this->getJson("/api/products/{$product->id}/reviews")->assertOk();
+        $this->assertCount(1, $this->items($response));
     }
 
-    public function test_user_can_create_review(): void
+    public function test_guest_cannot_submit_review(): void
     {
-        $user = User::factory()->create();
-        Sanctum::actingAs($user);
+        $product = Product::factory()->create();
 
-        $response = $this->postJson("/api/products/{$this->product->id}/reviews", [
-            'rating'  => 5,
-            'comment' => 'Excellent product!',
-        ]);
-
-        $response->assertCreated()
-            ->assertJsonPath('data.is_approved', false);
-
-        $this->assertDatabaseHas('reviews', [
-            'user_id'    => $user->id,
-            'product_id' => $this->product->id,
-            'rating'     => 5,
-        ]);
+        $this->postJson("/api/products/{$product->id}/reviews", ['rating' => 5])
+            ->assertStatus(401);
     }
 
-    public function test_user_cannot_review_same_product_twice(): void
+    public function test_resubmitting_updates_the_same_review_and_resets_approval(): void
     {
+        $product = Product::factory()->create();
         $user = User::factory()->create();
-        Sanctum::actingAs($user);
+        Review::create(['product_id' => $product->id, 'user_id' => $user->id, 'rating' => 3, 'is_approved' => true]);
 
-        Review::factory()->create([
-            'user_id'    => $user->id,
-            'product_id' => $this->product->id,
-        ]);
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/products/{$product->id}/reviews", ['rating' => 1])
+            ->assertStatus(201);
 
-        $response = $this->postJson("/api/products/{$this->product->id}/reviews", [
-            'rating' => 4,
-        ]);
+        $this->assertSame(1, Review::count());
+        $this->assertDatabaseHas('reviews', ['rating' => 1, 'is_approved' => false]);
+    }
 
-        $response->assertStatus(422);
+    public function test_rating_must_be_between_1_and_5(): void
+    {
+        $product = Product::factory()->create();
+
+        $this->actingAs(User::factory()->create(), 'sanctum')
+            ->postJson("/api/products/{$product->id}/reviews", ['rating' => 6])
+            ->assertStatus(422);
+
+        $this->actingAs(User::factory()->create(), 'sanctum')
+            ->postJson("/api/products/{$product->id}/reviews", ['rating' => 0])
+            ->assertStatus(422);
+    }
+
+    public function test_rating_is_required(): void
+    {
+        $product = Product::factory()->create();
+
+        $this->actingAs(User::factory()->create(), 'sanctum')
+            ->postJson("/api/products/{$product->id}/reviews", [])
+            ->assertStatus(422);
+    }
+
+    public function test_admin_can_list_pending_reviews(): void
+    {
+        $product = Product::factory()->create();
+        Review::create(['product_id' => $product->id, 'user_id' => User::factory()->create()->id, 'rating' => 2, 'is_approved' => false]);
+        Review::create(['product_id' => $product->id, 'user_id' => User::factory()->create()->id, 'rating' => 5, 'is_approved' => true]);
+
+        $response = $this->actingAs($this->createAdmin(), 'sanctum')
+            ->getJson('/api/admin/reviews/pending')
+            ->assertOk();
+
+        $this->assertCount(1, $this->items($response));
+    }
+
+    public function test_guest_cannot_list_pending_reviews(): void
+    {
+        $this->getJson('/api/admin/reviews/pending')->assertStatus(401);
     }
 
     public function test_admin_can_approve_review(): void
     {
-        $admin = User::factory()->create();
-        $admin->assignRole('admin');
-        Sanctum::actingAs($admin);
-
-        $review = Review::factory()->create([
-            'product_id'  => $this->product->id,
-            'is_approved' => false,
+        $review = Review::create([
+            'product_id' => Product::factory()->create()->id,
+            'user_id' => User::factory()->create()->id,
+            'rating' => 4,
         ]);
 
-        $response = $this->postJson("/api/admin/reviews/{$review->id}/approve");
+        $this->actingAs($this->createAdmin(), 'sanctum')
+            ->postJson("/api/admin/reviews/{$review->id}/approve")
+            ->assertOk();
 
-        $response->assertOk()
-            ->assertJsonPath('data.is_approved', true);
+        $this->assertTrue($review->fresh()->is_approved);
+    }
+
+    public function test_regular_user_cannot_approve_review(): void
+    {
+        $review = Review::create([
+            'product_id' => Product::factory()->create()->id,
+            'user_id' => User::factory()->create()->id,
+            'rating' => 4,
+        ]);
+
+        $this->actingAs(User::factory()->create(), 'sanctum')
+            ->postJson("/api/admin/reviews/{$review->id}/approve")
+            ->assertStatus(403);
     }
 
     public function test_admin_can_delete_review(): void
     {
-        $admin = User::factory()->create();
-        $admin->assignRole('admin');
-        Sanctum::actingAs($admin);
-
-        $review = Review::factory()->create([
-            'product_id'  => $this->product->id,
-            'is_approved' => true,
+        $review = Review::create([
+            'product_id' => Product::factory()->create()->id,
+            'user_id' => User::factory()->create()->id,
+            'rating' => 3,
         ]);
 
-        $response = $this->deleteJson("/api/admin/reviews/{$review->id}");
+        $this->actingAs($this->createAdmin(), 'sanctum')
+            ->deleteJson("/api/admin/reviews/{$review->id}")
+            ->assertOk();
 
-        $response->assertOk();
         $this->assertDatabaseMissing('reviews', ['id' => $review->id]);
+    }
+
+    public function test_regular_user_cannot_delete_review(): void
+    {
+        $review = Review::create([
+            'product_id' => Product::factory()->create()->id,
+            'user_id' => User::factory()->create()->id,
+            'rating' => 3,
+        ]);
+
+        $this->actingAs(User::factory()->create(), 'sanctum')
+            ->deleteJson("/api/admin/reviews/{$review->id}")
+            ->assertStatus(403);
     }
 }

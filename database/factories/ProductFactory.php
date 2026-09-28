@@ -13,21 +13,21 @@ class ProductFactory extends Factory
 
     public function definition(): array
     {
-        $nameEn = fake()->words(3, true);
+        $name = fake()->unique()->words(2, true);
 
         return [
-            'category_id'         => Category::factory(),
-            'name_ar'             => fake()->words(3, true),
-            'name_en'             => $nameEn,
-            'slug'                => Str::slug($nameEn) . '-' . fake()->unique()->numberBetween(1, 99999),
-            'description_ar'      => fake()->paragraph(),
-            'description_en'      => fake()->paragraph(),
-            'cover_image'         => null,
-            'price'               => fake()->randomFloat(2, 50, 5000),
-            'discount_percentage' => fake()->numberBetween(0, 30),
-            'quantity'            => fake()->numberBetween(1, 50),
-            'metadata'            => ['weight' => '2 carat', 'origin' => 'Myanmar'],
-            'is_active'           => true,
+            'category_id' => Category::factory(),
+            'name_ar' => $name,
+            'name_en' => $name,
+            'slug' => Str::slug($name).'-'.fake()->unique()->numberBetween(1, 100000),
+            'description_ar' => fake()->sentence(),
+            'description_en' => fake()->sentence(),
+            'cover_image' => 'products/test.jpg',
+            'price' => 1000,
+            'discount_percentage' => 0,
+            'quantity' => 10,
+            'metadata' => ['weight' => '5g'],
+            'is_active' => true,
         ];
     }
 }

@@ -12,42 +12,39 @@ class AuctionFactory extends Factory
 
     public function definition(): array
     {
-        $nameEn = fake()->words(3, true);
-        $price  = fake()->randomFloat(2, 100, 2000);
+        $name = fake()->unique()->words(2, true);
 
         return [
-            'name_ar'           => fake()->words(3, true),
-            'name_en'           => $nameEn,
-            'slug'              => Str::slug($nameEn) . '-' . fake()->unique()->numberBetween(1, 99999),
-            'description_ar'    => fake()->paragraph(),
-            'description_en'    => fake()->paragraph(),
-            'cover_image'       => null,
-            'metadata'          => null,
-            'starting_price'    => $price,
-            'current_price'     => $price,
+            'name_ar' => $name,
+            'name_en' => $name,
+            'slug' => Str::slug($name).'-'.fake()->unique()->numberBetween(1, 100000),
+            'description_ar' => fake()->sentence(),
+            'description_en' => fake()->sentence(),
+            'cover_image' => 'auctions/test.jpg',
+            'starting_price' => 1000,
+            'current_price' => 1000,
             'min_bid_increment' => 50,
-            'starts_at'         => now()->subHour(),
-            'ends_at'           => now()->addDays(3),
-            'status'            => 'active',
-            'winner_id'         => null,
+            'starts_at' => now()->subHour(),
+            'ends_at' => now()->addDay(),
+            'status' => 'active',
         ];
     }
 
     public function scheduled(): static
     {
         return $this->state(fn () => [
-            'status'    => 'scheduled',
+            'status' => 'scheduled',
             'starts_at' => now()->addDay(),
-            'ends_at'   => now()->addDays(4),
+            'ends_at' => now()->addDays(3),
         ]);
     }
 
-    public function ended(): static
+    public function expired(): static
     {
         return $this->state(fn () => [
-            'status'    => 'ended',
-            'starts_at' => now()->subDays(5),
-            'ends_at'   => now()->subDay(),
+            'status' => 'active',
+            'starts_at' => now()->subDays(3),
+            'ends_at' => now()->subMinute(),
         ]);
     }
 }

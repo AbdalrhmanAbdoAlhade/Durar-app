@@ -12,15 +12,14 @@ class CategoryFactory extends Factory
 
     public function definition(): array
     {
-        $nameEn = fake()->words(2, true);
+        $name = fake()->unique()->word();
 
         return [
-            'name_ar'    => fake()->words(2, true),
-            'name_en'    => $nameEn,
-            'slug'       => Str::slug($nameEn) . '-' . fake()->unique()->numberBetween(1, 99999),
-            'image'      => null,
-            'sort_order' => fake()->numberBetween(0, 100),
-            'is_active'  => true,
+            'name_ar' => $name,
+            'name_en' => $name,
+            'slug' => Str::slug($name).'-'.fake()->unique()->numberBetween(1, 100000),
+            'sort_order' => 0,
+            'is_active' => true,
         ];
     }
 }

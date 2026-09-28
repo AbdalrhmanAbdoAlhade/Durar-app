@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Auction;
-use App\Models\AuctionBid;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Category;
@@ -13,13 +12,12 @@ use App\Models\User;
 use App\Services\EdfaPayService;
 use App\Services\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Laravel\Sanctum\Sanctum;
-use Spatie\Permission\Models\Role;
+use Tests\CreatesAdmin;
 use Tests\TestCase;
 
 class OrderTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshDatabase, CreatesAdmin;
 
     protected Product $product;
     protected User $user;
@@ -27,8 +25,6 @@ class OrderTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
 
         // Avoid real EdfaPay / Firebase during tests
         $this->mock(EdfaPayService::class, function ($mock) {
@@ -42,34 +38,51 @@ class OrderTest extends TestCase
 
         $category = Category::factory()->create();
         $this->product = Product::factory()->create([
-            'category_id'         => $category->id,
-            'price'               => 1000,
+            'category_id' => $category->id,
+            'price' => 1000,
             'discount_percentage' => 0,
-            'quantity'            => 10,
-            'is_active'           => true,
+            'quantity' => 10,
+            'is_active' => true,
         ]);
         $this->user = User::factory()->create();
     }
 
+    protected function address(): array
+    {
+        return [
+            'name' => 'أحمد محمد',
+            'phone' => '0501234567',
+            'city' => 'الرياض',
+            'address_line' => 'الرياض، حي النرجس',
+        ];
+    }
+
+    protected function items($response): array
+    {
+        return $response->json('data.data') ?? $response->json('data');
+    }
+
+    public function test_guest_cannot_checkout(): void
+    {
+        $this->postJson('/api/orders/checkout', [
+            'shipping_address' => $this->address(),
+        ])->assertStatus(401);
+    }
+
     public function test_user_can_checkout_from_cart(): void
     {
-        Sanctum::actingAs($this->user);
+        $this->actingAs($this->user, 'sanctum');
 
         $cart = Cart::create(['user_id' => $this->user->id]);
         CartItem::create([
-            'cart_id'    => $cart->id,
+            'cart_id' => $cart->id,
             'product_id' => $this->product->id,
-            'quantity'   => 2,
+            'quantity' => 2,
             'unit_price' => 1000,
         ]);
 
         $response = $this->postJson('/api/orders/checkout', [
-            'shipping_address' => [
-                'name'    => 'أحمد محمد',
-                'phone'   => '0501234567',
-                'address' => 'الرياض، حي النرجس',
-                'city'    => 'الرياض',
-            ],
+            'shipping_address' => $this->address(),
         ]);
 
         $response->assertCreated()
@@ -80,42 +93,70 @@ class OrderTest extends TestCase
 
         $this->assertDatabaseHas('orders', [
             'user_id' => $this->user->id,
-            'type'    => 'product',
+            'type' => 'product',
         ]);
+    }
+
+    public function test_checkout_validates_shipping_address(): void
+    {
+        $this->actingAs($this->user, 'sanctum');
+
+        $cart = Cart::create(['user_id' => $this->user->id]);
+        CartItem::create([
+            'cart_id' => $cart->id,
+            'product_id' => $this->product->id,
+            'quantity' => 1,
+            'unit_price' => 1000,
+        ]);
+
+        $this->postJson('/api/orders/checkout', [])->assertStatus(422);
     }
 
     public function test_checkout_fails_with_empty_cart(): void
     {
-        Sanctum::actingAs($this->user);
+        $this->actingAs($this->user, 'sanctum');
 
         $response = $this->postJson('/api/orders/checkout', [
-            'shipping_address' => [
-                'name'    => 'أحمد',
-                'phone'   => '0501234567',
-                'address' => 'الرياض',
-                'city'    => 'الرياض',
-            ],
+            'shipping_address' => $this->address(),
         ]);
 
         $response->assertStatus(422);
     }
 
+    public function test_checkout_with_insufficient_stock_fails(): void
+    {
+        $this->actingAs($this->user, 'sanctum');
+
+        $cart = Cart::create(['user_id' => $this->user->id]);
+        CartItem::create([
+            'cart_id' => $cart->id,
+            'product_id' => $this->product->id,
+            'quantity' => 5,
+            'unit_price' => 1000,
+        ]);
+        $this->product->update(['quantity' => 2]);
+
+        $this->postJson('/api/orders/checkout', [
+            'shipping_address' => $this->address(),
+        ])->assertStatus(422);
+
+        $this->assertSame(0, Order::count());
+    }
+
     public function test_winner_can_checkout_auction(): void
     {
-        Sanctum::actingAs($this->user);
+        $this->actingAs($this->user, 'sanctum');
 
-        $auction = Auction::factory()->ended()->create([
-            'winner_id'     => $this->user->id,
+        $auction = Auction::factory()->create([
+            'status' => 'ended',
+            'starts_at' => now()->subDays(3),
+            'ends_at' => now()->subDay(),
+            'winner_id' => $this->user->id,
             'current_price' => 2500,
         ]);
 
         $response = $this->postJson("/api/auctions/{$auction->id}/checkout", [
-            'shipping_address' => [
-                'name'    => 'أحمد محمد',
-                'phone'   => '0501234567',
-                'address' => 'الرياض',
-                'city'    => 'الرياض',
-            ],
+            'shipping_address' => $this->address(),
         ]);
 
         $response->assertCreated()
@@ -124,36 +165,39 @@ class OrderTest extends TestCase
             ]);
 
         $this->assertDatabaseHas('orders', [
-            'user_id'    => $this->user->id,
-            'type'       => 'auction',
+            'user_id' => $this->user->id,
+            'type' => 'auction',
             'auction_id' => $auction->id,
         ]);
     }
 
     public function test_non_winner_cannot_checkout_auction(): void
     {
-        Sanctum::actingAs($this->user);
+        $this->actingAs($this->user, 'sanctum');
 
         $other = User::factory()->create();
-        $auction = Auction::factory()->ended()->create([
+        $auction = Auction::factory()->create([
+            'status' => 'ended',
+            'starts_at' => now()->subDays(3),
+            'ends_at' => now()->subDay(),
             'winner_id' => $other->id,
         ]);
 
         $response = $this->postJson("/api/auctions/{$auction->id}/checkout", [
-            'shipping_address' => [
-                'name'    => 'أحمد',
-                'phone'   => '0501234567',
-                'address' => 'الرياض',
-                'city'    => 'الرياض',
-            ],
+            'shipping_address' => $this->address(),
         ]);
 
         $response->assertStatus(422);
     }
 
+    public function test_guest_cannot_list_orders(): void
+    {
+        $this->getJson('/api/orders')->assertStatus(401);
+    }
+
     public function test_user_can_list_own_orders(): void
     {
-        Sanctum::actingAs($this->user);
+        $this->actingAs($this->user, 'sanctum');
 
         Order::factory()->count(3)->create(['user_id' => $this->user->id]);
         Order::factory()->create(); // other user
@@ -161,19 +205,60 @@ class OrderTest extends TestCase
         $response = $this->getJson('/api/orders');
 
         $response->assertOk();
-        $this->assertCount(3, $response->json('data'));
+        $this->assertCount(3, $this->items($response));
+    }
+
+    public function test_user_can_show_own_order(): void
+    {
+        $this->actingAs($this->user, 'sanctum');
+
+        $order = Order::factory()->create(['user_id' => $this->user->id]);
+
+        $this->getJson("/api/orders/{$order->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $order->id);
+    }
+
+    public function test_user_cannot_view_another_users_order(): void
+    {
+        $this->actingAs($this->user, 'sanctum');
+
+        $order = Order::factory()->create();
+
+        $this->getJson("/api/orders/{$order->id}")->assertStatus(404);
+    }
+
+    public function test_guest_cannot_access_admin_orders(): void
+    {
+        $this->getJson('/api/admin/orders')->assertStatus(401);
+    }
+
+    public function test_customer_cannot_access_admin_orders(): void
+    {
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/admin/orders')
+            ->assertStatus(403);
+    }
+
+    public function test_admin_can_list_orders(): void
+    {
+        Order::factory()->count(2)->create();
+
+        $this->actingAs($this->createAdmin(), 'sanctum')
+            ->getJson('/api/admin/orders')
+            ->assertOk()
+            ->assertJsonPath('success', true);
     }
 
     public function test_admin_can_update_order_status(): void
     {
-        $admin = User::factory()->create();
-        $admin->assignRole('admin');
-        Sanctum::actingAs($admin);
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'sanctum');
 
         $order = Order::factory()->create([
             'user_id' => $this->user->id,
-            'status'  => 'pending',
-            'type'    => 'product',
+            'status' => 'pending',
+            'type' => 'product',
         ]);
 
         $response = $this->putJson("/api/admin/orders/{$order->id}/status", [
@@ -182,5 +267,28 @@ class OrderTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.status', 'processing');
+    }
+
+    public function test_admin_update_status_validates_status(): void
+    {
+        $this->actingAs($this->createAdmin(), 'sanctum');
+
+        $order = Order::factory()->create(['status' => 'pending']);
+
+        $this->putJson("/api/admin/orders/{$order->id}/status", ['status' => 'flying'])
+            ->assertStatus(422);
+
+        $this->putJson("/api/admin/orders/{$order->id}/status", [])
+            ->assertStatus(422);
+    }
+
+    public function test_customer_cannot_update_order_status(): void
+    {
+        $this->actingAs($this->user, 'sanctum');
+
+        $order = Order::factory()->create(['user_id' => $this->user->id]);
+
+        $this->putJson("/api/admin/orders/{$order->id}/status", ['status' => 'shipped'])
+            ->assertStatus(403);
     }
 }

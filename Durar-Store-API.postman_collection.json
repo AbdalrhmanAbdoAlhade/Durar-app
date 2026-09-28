@@ -1,0 +1,1677 @@
+{
+	"info": {
+		"name": "Durar Store API",
+		"description": "متجر الحلي والأحجار الكريمة — Laravel API (Sanctum + Spatie Permission + EdfaPay + FCM).\n\nطريقة الاستخدام:\n1. عدّل variable باسم base_url حسب سيرفرك (مثال: http://localhost:8000/api).\n2. نفّذ Auth > Register أو Login — التوكن بيتحفظ تلقائيًا في customer_token.\n3. سجّل دخول بحساب أدمن (role = admin) — التوكن بيتحفظ في admin_token.\n4. كل الردود الناجحة شكلها: { success: true, message, data } والأخطاء: { success: false, message }.\n5. طلبات الرفع (multipart) ابعتها ك form-data واختار ملف الصورة من جهازك.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000/api"
+		},
+		{
+			"key": "customer_token",
+			"value": ""
+		},
+		{
+			"key": "admin_token",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "Auth",
+			"description": "التسجيل والدخول وإدارة الجلسة.",
+			"item": [
+				{
+					"name": "Register",
+					"description": "إنشاء حساب جديد وإصدار توكن Sanctum. شرط: password_confirmation يطابق password. الرد 201 وفيه data.user و data.token (بيتحفظ تلقائيًا في customer_token). خطأ 422 لو الإيميل مكرر أو البيانات ناقصة.",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var json = pm.response.json();",
+									"if (json.data && json.data.token) { pm.collectionVariables.set('customer_token', json.data.token); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auth/register",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "register"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Ahmed\",\n    \"email\": \"ahmed@example.com\",\n    \"phone\": \"01000000000\",\n    \"password\": \"password123\",\n    \"password_confirmation\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Login",
+					"description": "تسجيل الدخول بالإيميل والباسورد. الرد 200 وفيه data.token (بيتحفظ تلقائيًا في customer_token). خطأ 401 لو البيانات غلط، و422 لو ناقصة.",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var json = pm.response.json();",
+									"if (json.data && json.data.token) { pm.collectionVariables.set('customer_token', json.data.token); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"ahmed@example.com\",\n    \"password\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Admin Login",
+					"description": "تسجيل دخول حساب الأدمن (لازم يكون واخد role باسم admin). التوكن بيتحفظ في admin_token وبيستخدم في فولدر Admin. انسخ نفس body الـ Login بإيميل الأدمن.",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var json = pm.response.json();",
+									"if (json.data && json.data.token) { pm.collectionVariables.set('admin_token', json.data.token); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Me",
+					"description": "بيانات المستخدم الحالي (محتاج Bearer token). الرد 200 وفيه data.id و data.roles. خطأ 401 من غير توكن.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{customer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/me",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "me"]
+						}
+					}
+				},
+				{
+					"name": "Logout",
+					"description": "مسح توكن الجلسة الحالية (محتاج Bearer token). الرد 200. خطأ 401 من غير توكن.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{customer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/logout",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "logout"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Storefront - Categories",
+			"description": "عرض الأقسام للزوار (عام، من غير توكن).",
+			"item": [
+				{
+					"name": "List Categories",
+					"description": "قائمة الأقسام النشطة مرتبة بـ sort_order. الرد 200 و data مصفوفة أقسام (id, name_ar, name_en, slug, image).",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/categories",
+							"host": ["{{base_url}}"],
+							"path": ["categories"]
+						}
+					}
+				},
+				{
+					"name": "Show Category",
+					"description": "تفاصيل قسم واحد بالـ ID. الرد 200 و data.id يساوي المطلوب. خطأ 404 لو مش موجود.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/categories/1",
+							"host": ["{{base_url}}"],
+							"path": ["categories", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Storefront - Products",
+			"description": "عرض المنتجات للزوار (عام). القائمة paginated: العناصر في data.data.",
+			"item": [
+				{
+					"name": "List Products",
+					"description": "قائمة المنتجات النشطة فقط (20 في الصفحة). فلتر اختياري: ?category_id=1. كل عنصر فيه final_price (السعر بعد الخصم). الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/products?category_id=1",
+							"host": ["{{base_url}}"],
+							"path": ["products"],
+							"query": [
+								{
+									"key": "category_id",
+									"value": "1",
+									"description": "اختياري: فلترة بقسم معين (امسحه لعرض الكل)"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Show Product",
+					"description": "تفاصيل منتج واحد مع القسم والصور (gallery) و final_price. الرد 200. خطأ 404 لو مش موجود.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/products/1",
+							"host": ["{{base_url}}"],
+							"path": ["products", "1"]
+						}
+					}
+				},
+				{
+					"name": "Product Reviews",
+					"description": "التقييمات المعتمدة (is_approved=true) لمنتج — paginated. التقييم الجديد بيكون pending ومش بيظهر هنا لحد موافقة الأدمن. الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/products/1/reviews",
+							"host": ["{{base_url}}"],
+							"path": ["products", "1", "reviews"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Storefront - Banners",
+			"description": "البنرات النشطة للزوار (عام).",
+			"item": [
+				{
+					"name": "List Banners",
+					"description": "قائمة البنرات النشطة (20 في الصفحة). فلتر اختياري: ?type=normal أو offer. الرد 200 و data.data مصفوفة بنرات.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/banners?type=normal",
+							"host": ["{{base_url}}"],
+							"path": ["banners"],
+							"query": [
+								{
+									"key": "type",
+									"value": "normal",
+									"description": "اختياري: normal أو offer (امسحه لعرض الكل)"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Storefront - Auctions",
+			"description": "المزادات للزوار (عام). المزاد كيان منفصل عن المنتجات. أقل مزايدة = current_price + min_bid_increment.",
+			"item": [
+				{
+					"name": "List Auctions",
+					"description": "المزادات النشطة افتراضيًا (paginated). باراميتر status: upcoming (المجدولة) أو ended (المنتهية). كل مزاد فيه minimum_next_bid و is_biddable. الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auctions",
+							"host": ["{{base_url}}"],
+							"path": ["auctions"]
+						}
+					}
+				},
+				{
+					"name": "List Upcoming Auctions",
+					"description": "المزادات المجدولة (status=scheduled) مرتبة بمعاد البدء. الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auctions?status=upcoming",
+							"host": ["{{base_url}}"],
+							"path": ["auctions"],
+							"query": [
+								{
+									"key": "status",
+									"value": "upcoming"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Show Auction",
+					"description": "تفاصيل مزاد واحد مع الصور والمزايدات والفايز (لو انتهى). الرد 200. خطأ 404 لو مش موجود.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auctions/1",
+							"host": ["{{base_url}}"],
+							"path": ["auctions", "1"]
+						}
+					}
+				},
+				{
+					"name": "Auction Bids",
+					"description": "كل المزايدات على مزاد مع بيانات المزايدين. الرد 200 و data مصفوفة (id, user, amount).",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auctions/1/bids",
+							"host": ["{{base_url}}"],
+							"path": ["auctions", "1", "bids"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Storefront - Cart",
+			"description": "السلة شغالة للضيف (session) وللمستخدم المسجل. سعر الوحدة بيتخزن snapshot بسعر final_price وقت الإضافة. ملحوظة: في Postman كل طلب بياخد session جديدة، فخطوات الضيف متعددة الطلبات (تعديل/مسح) جربها بحساب مسجل.",
+			"item": [
+				{
+					"name": "Show Cart",
+					"description": "عرض السلة الحالية (فاضية لو أول مرة). الرد 200 و data فيها items و subtotal و items_count.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/cart",
+							"host": ["{{base_url}}"],
+							"path": ["cart"]
+						}
+					}
+				},
+				{
+					"name": "Add Item",
+					"description": "إضافة منتج للسلة. لو موجود بيزود الكمية. الرد 200 مع السلة محدثة. خطأ 422 لو الكمية أكبر من المخزون، و422 validation لو product_id مش موجود أو quantity أقل من 1.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/cart/items",
+							"host": ["{{base_url}}"],
+							"path": ["cart", "items"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"product_id\": 1,\n    \"quantity\": 2\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Update Item",
+					"description": "تغيير كمية عنصر في السلة (بدّل {item} برقم العنصر cart_items.id). الرد 200. خطأ 422 لو الكمية تتجاوز المخزون، و404 لو العنصر مش في سلتك.",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/cart/items/1",
+							"host": ["{{base_url}}"],
+							"path": ["cart", "items", "1"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"quantity\": 3\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Remove Item",
+					"description": "حذف عنصر من السلة (بدّل 1 برقم العنصر). الرد 200 مع السلة محدثة.",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/cart/items/1",
+							"host": ["{{base_url}}"],
+							"path": ["cart", "items", "1"]
+						}
+					}
+				},
+				{
+					"name": "Clear Cart",
+					"description": "تفريغ السلة كلها. الرد 200 ورسالة Cart cleared.",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/cart",
+							"host": ["{{base_url}}"],
+							"path": ["cart"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Storefront - Coupons",
+			"description": "الكوبون على مستوى القسم (coupon_category) والخصم بيتحسب على منتجات القسم ده بس.",
+			"item": [
+				{
+					"name": "Check Coupon",
+					"description": "التحقق من كوبون قبل الدفع: لازم الكود يكون شغال (نشط، ساري، تحت حد الاستخدام) ويغطي قسمًا واحدًا على الأقل من category_ids. الرد 200 مع بيانات الكوبون لو صالح، و422 لو منتهي/غير نشط/مش تابع لأقسام السلة.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/coupons/check",
+							"host": ["{{base_url}}"],
+							"path": ["coupons", "check"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"code\": \"CATA10\",\n    \"category_ids\": [1]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Customer",
+			"description": "عمليات المستخدم المسجل (Bearer customer_token). طلب مستخدم تاني بيرجع 404.",
+			"auth": {
+				"type": "bearer",
+				"bearer": [
+					{
+						"key": "token",
+						"value": "{{customer_token}}",
+						"type": "string"
+					}
+				]
+			},
+			"item": [
+				{
+					"name": "Submit Review",
+					"description": "تقييم منتج (rating من 1 لـ 5، وcomment اختياري). التقييم الجديد دايمًا is_approved=false ومخفي من العام. الإرسال التاني من نفس المستخدم بيحدّث نفس التقييم ويرجعه pending. الرد 201. خطأ 422 لو rating بره 1-5، و401 للضيف.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/products/1/reviews",
+							"host": ["{{base_url}}"],
+							"path": ["products", "1", "reviews"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"rating\": 5,\n    \"comment\": \"خاتم ممتاز وخامة أصلية\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Place Bid",
+					"description": "مزايدة على مزاد نشط. الشرط: amount >= minimum_next_bid (هاته من Show Auction). الرد 201 مع المزايدة. خطأ 422 لو المبلغ أقل من الحد أو المزاد مجدول/منتهي، و401 للضيف.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auctions/1/bids",
+							"host": ["{{base_url}}"],
+							"path": ["auctions", "1", "bids"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 1050\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Checkout Cart (Create Order)",
+					"description": "تحويل السلة لأوردر: بيتحقق من المخزون، يطبق الكوبون (على أقسام الكوبون بس)، يخصم المخزون، يفتح سجل دفع pending، ويفضي السلة، ويرجع رابط دفع EdfaPay. الرد 201 وفيه data.order و data.payment_redirect_url. خطأ 422 لو السلة فاضية أو المخزون ناقص أو الكوبون مش منطبق، و401 للضيف.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/orders/checkout",
+							"host": ["{{base_url}}"],
+							"path": ["orders", "checkout"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"shipping_address\": {\n        \"name\": \"Ahmed\",\n        \"phone\": \"01000000000\",\n        \"city\": \"Cairo\",\n        \"address_line\": \"123 Main St\"\n    },\n    \"coupon_code\": \"CATA10\",\n    \"shipping_fee\": 30\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Checkout Auction Win",
+					"description": "الفايز بس يقدر يحول مزاد منتهي لأوردر (type=auction) بإجمالي = current_price، مع فتح سجل دفع ورابط EdfaPay. الرد 201. خطأ 422 لغير الفايز أو لو المزاد لسه مخلصش أو اتعمل له أوردر قبل كده.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/auctions/1/checkout",
+							"host": ["{{base_url}}"],
+							"path": ["auctions", "1", "checkout"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"shipping_address\": {\n        \"name\": \"Ahmed\",\n        \"phone\": \"01000000000\",\n        \"city\": \"Cairo\",\n        \"address_line\": \"123 Main St\"\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "List My Orders",
+					"description": "أوردرات المستخدم الحالي فقط (paginated — العناصر في data.data). الرد 200. خطأ 401 للضيف.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/orders",
+							"host": ["{{base_url}}"],
+							"path": ["orders"]
+						}
+					}
+				},
+				{
+					"name": "Show Order",
+					"description": "تفاصيل أوردر مع المنتجات والكوبون والمزاد. لو الأوردر بتاع مستخدم تاني بيرجع 404 (مش 403). الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/orders/1",
+							"host": ["{{base_url}}"],
+							"path": ["orders", "1"]
+						}
+					}
+				},
+				{
+					"name": "Show Order Payment",
+					"description": "أحدث سجل دفع لأوردر (gateway, reference, amount, status). بتاع مستخدم تاني → 404. الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/orders/1/payment",
+							"host": ["{{base_url}}"],
+							"path": ["orders", "1", "payment"]
+						}
+					}
+				},
+				{
+					"name": "Register FCM Token",
+					"description": "تسجيل/تحديث توكن جهاز للإشعارات (نفس التوكن بيتحدث مش بيتكرر). device_type: android أو ios أو web. الرد 200. خطأ 422 لو token ناقص أو device_type غلط، و401 للضيف.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/fcm-tokens",
+							"host": ["{{base_url}}"],
+							"path": ["fcm-tokens"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"token\": \"fcm-device-token-abc123\",\n    \"device_type\": \"android\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Delete FCM Token",
+					"description": "حذف توكن جهاز (مثلًا عند تسجيل الخروج). بيمسح توكنات المستخدم الحالي بس. الرد 200. خطأ 422 لو token ناقص.",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/fcm-tokens",
+							"host": ["{{base_url}}"],
+							"path": ["fcm-tokens"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"token\": \"fcm-device-token-abc123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Webhook - EdfaPay",
+			"description": "بيناديها سيرفر EdfaPay مباشرة (عامة، من غير توكن). مهم: السيرفر مش بيثق في محتوى الطلب — بيعيد الاستعلام عن الحالة من EdfaPay بنفسه.",
+			"item": [
+				{
+					"name": "EdfaPay Webhook",
+					"description": "استقبال نتيجة الدفع: بيتحقق من الحالة الحقيقية عبر /payment/status ثم يحدّث الدفع (success/failed) والأوردر (paid→processing). الرد 200 دائمًا عند المعالجة. خطأ 422 لو order_id ناقص، و404 لو الأوردر مش موجود، و502 لو تعذر التحقق من EdfaPay.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/payments/edfapay/webhook",
+							"host": ["{{base_url}}"],
+							"path": ["payments", "edfapay", "webhook"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"order_id\": \"ORD-20240101-ABC123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Categories",
+			"description": "إدارة الأقسام (توكن أدمن + role:admin. المستخدم العادي → 403، والضيف → 401).",
+			"auth": {
+				"type": "bearer",
+				"bearer": [
+					{
+						"key": "token",
+						"value": "{{admin_token}}",
+						"type": "string"
+					}
+				]
+			},
+			"item": [
+				{
+					"name": "Admin List Categories",
+					"description": "كل الأقسام للإدارة (paginated). الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/categories",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "categories"]
+						}
+					}
+				},
+				{
+					"name": "Create Category",
+					"description": "إنشاء قسم. ابعته form-data (عشان الصورة). الـ slug بيتولد تلقائيًا من name_en وبيكون فريد (rings, rings-1). الرد 201. خطأ 422 لو name_ar أو name_en ناقصين.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/categories",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "categories"]
+						},
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name_ar",
+									"value": "خواتم",
+									"type": "text"
+								},
+								{
+									"key": "name_en",
+									"value": "Rings",
+									"type": "text"
+								},
+								{
+									"key": "image",
+									"type": "file",
+									"description": "اختياري: اختار صورة من جهازك"
+								},
+								{
+									"key": "sort_order",
+									"value": "0",
+									"type": "text"
+								},
+								{
+									"key": "is_active",
+									"value": "1",
+									"type": "text"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Update Category",
+					"description": "تعديل قسم (كل الحقول sometimes — ابعت اللي عايز تغيره بس، ولو غيّرت name_en من غير slug بيتولد slug جديد). الرد 200.",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/categories/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "categories", "1"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name_ar\": \"خواتم محدثة\",\n    \"name_en\": \"Updated Rings\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Delete Category",
+					"description": "حذف قسم مع صورته. الرد 200. ملحوظة: قسم عليه منتجات مش هيتمسح (قيد المفتاح الأجنبي).",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/categories/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "categories", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Products",
+			"description": "إدارة المنتجات (توكن أدمن). الرفع form-data.",
+			"auth": {
+				"type": "bearer",
+				"bearer": [
+					{
+						"key": "token",
+						"value": "{{admin_token}}",
+						"type": "string"
+					}
+				]
+			},
+			"item": [
+				{
+					"name": "Admin List Products",
+					"description": "كل المنتجات بما فيها غير النشطة (paginated، فلتر ?category_id=). الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/products",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "products"]
+						}
+					}
+				},
+				{
+					"name": "Create Product",
+					"description": "إنشاء منتج مع صورة غلاف ومعرض صور. ابعته form-data واختار الصور من جهازك. الرد 201 وفيه data.final_price (السعر بعد الخصم). خطأ 422 لو discount_percentage أكبر من 100 أو البيانات ناقصة.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/products",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "products"]
+						},
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "category_id",
+									"value": "1",
+									"type": "text"
+								},
+								{
+									"key": "name_ar",
+									"value": "خاتم ذهب",
+									"type": "text"
+								},
+								{
+									"key": "name_en",
+									"value": "Gold Ring",
+									"type": "text"
+								},
+								{
+									"key": "price",
+									"value": "5000",
+									"type": "text"
+								},
+								{
+									"key": "discount_percentage",
+									"value": "10",
+									"type": "text",
+									"description": "من 0 لـ 100"
+								},
+								{
+									"key": "quantity",
+									"value": "20",
+									"type": "text"
+								},
+								{
+									"key": "cover_image",
+									"type": "file",
+									"description": "اختار صورة الغلاف من جهازك"
+								},
+								{
+									"key": "gallery[]",
+									"type": "file",
+									"description": "صورة معرض 1 (كرر السطر لصور أكتر)"
+								},
+								{
+									"key": "gallery[]",
+									"type": "file",
+									"description": "صورة معرض 2"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Update Product",
+					"description": "تعديل منتج (حقول sometimes — ابعت اللي عايز تغيره بس). الرد 200 مع المنتج محدثًا.",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/products/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "products", "1"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"price\": 4500,\n    \"discount_percentage\": 15,\n    \"quantity\": 25\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Delete Product",
+					"description": "حذف منتج مع صوره. الرد 200.",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/products/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "products", "1"]
+						}
+					}
+				},
+				{
+					"name": "Delete Product Image",
+					"description": "حذف صورة واحدة من معرض منتج (بدّل 1 برقم المنتج و2 برقم الصورة product_images.id). لو الصورة مش تابعة للمنتج → 404. الرد 200.",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/products/1/images/2",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "products", "1", "images", "2"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Coupons",
+			"description": "إدارة الكوبونات (توكن أدمن). type إما percentage أو fixed.",
+			"auth": {
+				"type": "bearer",
+				"bearer": [
+					{
+						"key": "token",
+						"value": "{{admin_token}}",
+						"type": "string"
+					}
+				]
+			},
+			"item": [
+				{
+					"name": "List Coupons",
+					"description": "كل الكوبونات مع أقسامها (paginated). الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/coupons",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "coupons"]
+						}
+					}
+				},
+				{
+					"name": "Show Coupon",
+					"description": "تفاصيل كوبون مع أقسامه. الرد 200. خطأ 404 لو مش موجود.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/coupons/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "coupons", "1"]
+						}
+					}
+				},
+				{
+					"name": "Create Coupon",
+					"description": "إنشاء كوبون وربطه بأقسام (category_ids). مثال: خصم 10% على قسم معين. الرد 201. خطأ 422 لو الكود مكرر أو type مش percentage/fixed.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/coupons",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "coupons"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"code\": \"SAVE20\",\n    \"type\": \"percentage\",\n    \"value\": 20,\n    \"max_discount_amount\": 100,\n    \"usage_limit\": 50,\n    \"is_active\": true,\n    \"category_ids\": [1]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Update Coupon",
+					"description": "تعديل كوبون (حقول sometimes). لإعادة ربط الأقسام ابعت category_ids الجديدة. الرد 200.",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/coupons/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "coupons", "1"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"value\": 25,\n    \"usage_limit\": 100\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Delete Coupon",
+					"description": "حذف كوبون. الرد 200.",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/coupons/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "coupons", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Banners",
+			"description": "إدارة البنرات (توكن أدمن). type إما normal أو offer. الرفع form-data.",
+			"auth": {
+				"type": "bearer",
+				"bearer": [
+					{
+						"key": "token",
+						"value": "{{admin_token}}",
+						"type": "string"
+					}
+				]
+			},
+			"item": [
+				{
+					"name": "Admin List Banners",
+					"description": "كل البنرات بما فيها غير النشطة (paginated). الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/banners",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "banners"]
+						}
+					}
+				},
+				{
+					"name": "Create Banner",
+					"description": "إنشاء بنر. الصورة إجبارية — ابعته form-data واختارها من جهازك. ممكن ربطه بكوبون (coupon_id). الرد 201. خطأ 422 لو type مش normal/offer أو الصورة ناقصة.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/banners",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "banners"]
+						},
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "type",
+									"value": "normal",
+									"type": "text"
+								},
+								{
+									"key": "title_ar",
+									"value": "عرض جديد",
+									"type": "text"
+								},
+								{
+									"key": "title_en",
+									"value": "New offer",
+									"type": "text"
+								},
+								{
+									"key": "image",
+									"type": "file",
+									"description": "إجبارية: اختار صورة من جهازك"
+								},
+								{
+									"key": "is_active",
+									"value": "1",
+									"type": "text"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Update Banner",
+					"description": "تعديل بنر. لو بعت صورة جديدة القديمة بتتمسح تلقائيًا. ملحوظة: حدّث الصورة عبر POST مع _method=PUT لو عميلك مش بيدعم ملفات في PUT. الرد 200.",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/banners/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "banners", "1"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title_en\": \"Updated offer\",\n    \"is_active\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Delete Banner",
+					"description": "حذف بنر مع صورته. الرد 200.",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/banners/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "banners", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Reviews",
+			"description": "مراجعة تقييمات المستخدمين (توكن أدمن).",
+			"auth": {
+				"type": "bearer",
+				"bearer": [
+					{
+						"key": "token",
+						"value": "{{admin_token}}",
+						"type": "string"
+					}
+				]
+			},
+			"item": [
+				{
+					"name": "Pending Reviews",
+					"description": "التقييمات المستنية موافقة (is_approved=false) مع المستخدم والمنتج (paginated). الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/reviews/pending",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "reviews", "pending"]
+						}
+					}
+				},
+				{
+					"name": "Approve Review",
+					"description": "الموافقة على تقييم (بيظهر للعامة بعدها وبيتبعت إشعار للمستخدم). الرد 200. المستخدم العادي → 403.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/reviews/1/approve",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "reviews", "1", "approve"]
+						}
+					}
+				},
+				{
+					"name": "Delete Review",
+					"description": "حذف تقييم مرفوض. الرد 200. المستخدم العادي → 403.",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/reviews/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "reviews", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Auctions",
+			"description": "إدارة المزادات (توكن أدمن). أمر artisan المكافئ للتشغيل الآلي: php artisan auctions:process (بيفعّل المجدولة اللي معادها جه ويقفل المنتهية).",
+			"auth": {
+				"type": "bearer",
+				"bearer": [
+					{
+						"key": "token",
+						"value": "{{admin_token}}",
+						"type": "string"
+					}
+				]
+			},
+			"item": [
+				{
+					"name": "Admin List Auctions",
+					"description": "كل المزادات بكل الحالات مع الفايز (paginated). الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/auctions",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "auctions"]
+						}
+					}
+				},
+				{
+					"name": "Create Auction",
+					"description": "إنشاء مزاد. صورة الغلاف إجبارية — ابعته form-data. السعر الحالي بيبدأ من starting_price والحالة الافتراضية scheduled. الرد 201. خطأ 422 لو التواريخ غلط (ends_at لازم بعد starts_at).",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/auctions",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "auctions"]
+						},
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "name_ar",
+									"value": "مزاد ذهب",
+									"type": "text"
+								},
+								{
+									"key": "name_en",
+									"value": "Gold Auction",
+									"type": "text"
+								},
+								{
+									"key": "starting_price",
+									"value": "1000",
+									"type": "text"
+								},
+								{
+									"key": "min_bid_increment",
+									"value": "50",
+									"type": "text"
+								},
+								{
+									"key": "starts_at",
+									"value": "2026-10-01 10:00:00",
+									"type": "text"
+								},
+								{
+									"key": "ends_at",
+									"value": "2026-10-05 10:00:00",
+									"type": "text"
+								},
+								{
+									"key": "cover_image",
+									"type": "file",
+									"description": "إجبارية: اختار صورة من جهازك"
+								},
+								{
+									"key": "gallery[]",
+									"type": "file",
+									"description": "اختياري: صورة معرض"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Update Auction",
+					"description": "تعديل مزاد (حقول sometimes). ممكن إضافة صور معرض جديدة. الرد 200 مع المزاد محدثًا.",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/auctions/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "auctions", "1"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"min_bid_increment\": 100,\n    \"status\": \"active\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				},
+				{
+					"name": "Close Auction",
+					"description": "إغلاق مزاد يدويًا: بيتحول لـ ended والفايز بيبقى أعلى مزايد (مع إشعار له). الرد 200 وفيه data.status=ended و data.winner.",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/auctions/1/close",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "auctions", "1", "close"]
+						}
+					}
+				},
+				{
+					"name": "Delete Auction",
+					"description": "حذف مزاد مع صوره. الرد 200.",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/auctions/1",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "auctions", "1"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Orders",
+			"description": "إدارة الطلبات (توكن أدمن). حالات الطلب: pending, processing, shipped, delivered, cancelled.",
+			"auth": {
+				"type": "bearer",
+				"bearer": [
+					{
+						"key": "token",
+						"value": "{{admin_token}}",
+						"type": "string"
+					}
+				]
+			},
+			"item": [
+				{
+					"name": "Admin List Orders",
+					"description": "كل الطلبات مع المنتجات والمستخدمين (paginated). فلتر اختياري: ?status=pending. الرد 200.",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/orders?status=pending",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "orders"],
+							"query": [
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "اختياري: فلترة بالحالة (امسحه لعرض الكل)"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Update Order Status",
+					"description": "تغيير حالة طلب (بيبعت إشعار FCM للمستخدم تلقائيًا). status المسموحة: pending, processing, shipped, delivered, cancelled. الرد 200 وفيه data.status الجديدة. خطأ 422 لو الحالة غلط.",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/admin/orders/1/status",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "orders", "1", "status"]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"processing\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				}
+			]
+		}
+	]
+}
