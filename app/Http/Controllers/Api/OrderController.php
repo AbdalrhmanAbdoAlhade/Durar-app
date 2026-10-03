@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Services\CartService;
 use App\Services\EdfaPayService;
 use App\Services\OrderService;
+use App\Services\WhatsAppService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -34,22 +35,35 @@ class OrderController extends Controller
             ->latest()
             ->paginate(20);
 
-        return $this->success(OrderResource::collection($orders));
+        return $this->success(
+            OrderResource::collection($orders)
+        );
     }
 
     // GET /api/orders/{order} (auth, owner only)
-    public function show(Request $request, Order $order): JsonResponse
-    {
+    public function show(
+        Request $request,
+        Order $order
+    ): JsonResponse {
         if ($order->user_id !== $request->user()->id) {
             return $this->error('Not found', 404);
         }
 
-        return $this->success(new OrderResource($order->load('items.product', 'coupon', 'auction')));
+        return $this->success(
+            new OrderResource(
+                $order->load(
+                    'items.product',
+                    'coupon',
+                    'auction'
+                )
+            )
+        );
     }
 
     // POST /api/orders/checkout (auth)
-    public function checkout(CheckoutRequest $request): JsonResponse
-    {
+    public function checkout(
+        CheckoutRequest $request
+    ): JsonResponse {
         $cart = $this->carts->getOrCreateCart($request);
 
         $order = $this->orders->checkoutCart(
@@ -66,6 +80,9 @@ class OrderController extends Controller
             'phone' => $request->user()->phone,
         ]);
 
+        // WhatsApp - Order Created
+        WhatsAppService::orderCreated($order);
+
         return $this->success([
             'order' => new OrderResource($order),
             'payment_redirect_url' => $redirectUrl,
@@ -73,8 +90,10 @@ class OrderController extends Controller
     }
 
     // POST /api/auctions/{auction}/checkout (auth)
-    public function checkoutAuction(AuctionCheckoutRequest $request, Auction $auction): JsonResponse
-    {
+    public function checkoutAuction(
+        AuctionCheckoutRequest $request,
+        Auction $auction
+    ): JsonResponse {
         $order = $this->orders->checkoutAuctionWin(
             $auction,
             $request->user()->id,
@@ -87,6 +106,9 @@ class OrderController extends Controller
             'phone' => $request->user()->phone,
         ]);
 
+        // WhatsApp - Order Created
+        WhatsAppService::orderCreated($order);
+
         return $this->success([
             'order' => new OrderResource($order),
             'payment_redirect_url' => $redirectUrl,
@@ -98,21 +120,41 @@ class OrderController extends Controller
     {
         $orders = Order::query()
             ->with('items.product', 'user')
-            ->when($request->filled('status'), fn ($q) => $q->status($request->string('status')))
+            ->when(
+                $request->filled('status'),
+                fn ($q) => $q->status(
+                    $request->string('status')
+                )
+            )
             ->latest()
             ->paginate(20);
 
-        return $this->success(OrderResource::collection($orders));
+        return $this->success(
+            OrderResource::collection($orders)
+        );
     }
 
     // PUT /api/admin/orders/{order}/status (admin)
-    public function updateStatus(Request $request, Order $order): JsonResponse
-    {
+    public function updateStatus(
+        Request $request,
+        Order $order
+    ): JsonResponse {
         $request->validate([
-            'status' => ['required', 'in:pending,processing,shipped,delivered,cancelled'],
+            'status' => [
+                'required',
+                'in:pending,processing,shipped,delivered,cancelled'
+            ],
         ]);
 
-        $order->update(['status' => $request->string('status')]);
+        $newStatus = $request->string('status')->value();
+
+        $order->update([
+            'status' => $newStatus,
+        ]);
+
+        // =====================================================
+        // In-App Notification
+        // =====================================================
 
         $this->notifications->sendToUser(
             $order->user,
@@ -120,6 +162,36 @@ class OrderController extends Controller
             "طلبك رقم {$order->order_number} بقى: {$order->status}"
         );
 
-        return $this->success(new OrderResource($order), 'Order status updated');
+        // =====================================================
+        // WhatsApp Notifications
+        // =====================================================
+
+        // 1. Shipped
+        if ($newStatus === 'shipped') {
+            WhatsAppService::orderShipped($order);
+        }
+
+        // 2. Cancelled
+        elseif ($newStatus === 'cancelled') {
+            WhatsAppService::orderCancelled($order);
+        }
+
+        // 3. Delivered -> Request Review
+        elseif ($newStatus === 'delivered') {
+            $reviewUrl = config('app.frontend_url')
+                . '/orders/'
+                . $order->id
+                . '/review';
+
+            WhatsAppService::reviewRequest(
+                $order,
+                $reviewUrl
+            );
+        }
+
+        return $this->success(
+            new OrderResource($order),
+            'Order status updated'
+        );
     }
 }

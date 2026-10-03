@@ -27,6 +27,15 @@ class StoreProductRequest extends FormRequest
             'quantity' => ['required', 'integer', 'min:0'],
             'metadata' => ['nullable', 'array'],
             'is_active' => ['nullable', 'boolean'],
+            'is_rare' => ['nullable', 'boolean'],
+
+            // ===== الحقول الجديدة =====
+            'classification' => ['nullable', 'string', 'max:255'],
+            'hardness' => ['nullable', 'string', 'max:50'],
+            'origin_country' => ['nullable', 'string', 'size:2'],
+            'origin_details' => ['nullable', 'string', 'max:255'],
+            'weight' => ['nullable', 'numeric', 'min:0'],
+            'weight_unit' => ['nullable', 'string', 'max:20'],
         ];
     }
 }

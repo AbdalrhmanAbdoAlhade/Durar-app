@@ -25,6 +25,8 @@ class ProductResource extends JsonResource
             'final_price' => $this->final_price,
             'quantity' => $this->quantity,
             'is_active' => $this->is_active,
+            'is_rare'     => (bool) $this->is_rare,
+            'sales_count' => (int) $this->sales_count,
         ];
     }
 }

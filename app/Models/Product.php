@@ -12,6 +12,7 @@ class Product extends Model
 {
     use HasFactory;
 
+    // sales_count مش هنا عن قصد: بيتحدث من OrderObserver بس
     protected $fillable = [
         'category_id',
         'name_ar',
@@ -23,16 +24,28 @@ class Product extends Model
         'price',
         'discount_percentage',
         'quantity',
+        'is_rare',
         'metadata',
         'is_active',
+
+        // ===== الحقول الجديدة =====
+        'classification',
+        'hardness',
+        'origin_country',
+        'origin_details',
+        'weight',
+        'weight_unit',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'discount_percentage' => 'integer',
         'quantity' => 'integer',
+        'sales_count' => 'integer',
+        'is_rare' => 'boolean',
         'metadata' => 'array',
         'is_active' => 'boolean',
+        'weight' => 'decimal:2',          // جديد
     ];
 
     public function category(): BelongsTo
@@ -78,6 +91,11 @@ class Product extends Model
     public function scopeInStock($query)
     {
         return $query->where('quantity', '>', 0);
+    }
+
+    public function scopeRare($query)
+    {
+        return $query->where('is_rare', true);
     }
 
     /**

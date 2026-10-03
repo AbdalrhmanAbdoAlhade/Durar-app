@@ -13,7 +13,7 @@ class AuctionImageResource extends JsonResource
             'id'         => $this->id,
             'image'      => $this->image,
             'sort_order' => $this->sort_order,
-            'url'        => $this->image ? asset('storage/' . $this->image) : null,
+            'url'        => $this->image ? asset('' . $this->image) : null,
         ];
     }
 }

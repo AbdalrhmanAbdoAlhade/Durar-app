@@ -10,16 +10,19 @@ use App\Http\Resources\AuctionBidResource;
 use App\Http\Resources\AuctionResource;
 use App\Models\Auction;
 use App\Services\AuctionService;
+use App\Traits\ApiResponseTrait;
+use App\Traits\ImageConverterTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class AuctionController extends Controller
 {
-    use ApiResponseTrait;
+    use ApiResponseTrait, ImageConverterTrait;
 
-    public function __construct(protected AuctionService $auctions)
-    {
+    public function __construct(
+        protected AuctionService $auctions
+    ) {
     }
 
     // GET /api/auctions?status=active|upcoming|ended (public)
@@ -31,90 +34,257 @@ class AuctionController extends Controller
             default => $this->auctions->listActive(),
         };
 
-        return $this->success(AuctionResource::collection($auctions));
+        return $this->success(
+            AuctionResource::collection($auctions)
+        );
     }
 
     // GET /api/auctions/{auction} (public)
     public function show(Auction $auction): JsonResponse
     {
-        return $this->success(new AuctionResource($this->auctions->find($auction->id)));
+        return $this->success(
+            new AuctionResource(
+                $this->auctions->find($auction->id)
+            )
+        );
     }
 
     // GET /api/admin/auctions (admin)
     public function adminIndex(): JsonResponse
     {
-        return $this->success(AuctionResource::collection($this->auctions->listAll()));
+        return $this->success(
+            AuctionResource::collection(
+                $this->auctions->listAll()
+            )
+        );
     }
 
     // POST /api/admin/auctions (admin)
-    public function store(StoreAuctionRequest $request): JsonResponse
-    {
+    public function store(
+        StoreAuctionRequest $request
+    ): JsonResponse {
         $data = $request->validated();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Gallery is not a column in auctions table
+        |--------------------------------------------------------------------------
+        */
+
         unset($data['gallery']);
 
-        $data['cover_image'] = $request->file('cover_image')->store('auctions', 'public');
+        /*
+        |--------------------------------------------------------------------------
+        | Cover Image
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->hasFile('cover_image')) {
+            $data['cover_image'] = $this->storeImageAsWebp(
+                $request->file('cover_image'),
+                'auctions'
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Create Auction
+        |--------------------------------------------------------------------------
+        */
 
         $auction = $this->auctions->create($data);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Gallery Images
+        |--------------------------------------------------------------------------
+        */
+
         if ($request->hasFile('gallery')) {
-            $paths = array_map(fn ($file) => $file->store('auctions', 'public'), $request->file('gallery'));
-            $this->auctions->addGalleryImages($auction, $paths);
+            $paths = [];
+
+            foreach ($request->file('gallery') as $file) {
+                $paths[] = $this->storeImageAsWebp(
+                    $file,
+                    'auctions'
+                );
+            }
+
+            $this->auctions->addGalleryImages(
+                $auction,
+                $paths
+            );
         }
 
-        return $this->success(new AuctionResource($auction->load('images')), 'Auction created', 201);
+        return $this->success(
+            new AuctionResource(
+                $auction->load('images')
+            ),
+            'Auction created',
+            201
+        );
     }
 
     // PUT /api/admin/auctions/{auction} (admin)
-    public function update(UpdateAuctionRequest $request, Auction $auction): JsonResponse
-    {
+    public function update(
+        UpdateAuctionRequest $request,
+        Auction $auction
+    ): JsonResponse {
         $data = $request->validated();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Gallery is not a column in auctions table
+        |--------------------------------------------------------------------------
+        */
+
         unset($data['gallery']);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Replace Cover Image
+        |--------------------------------------------------------------------------
+        */
+
         if ($request->hasFile('cover_image')) {
-            Storage::disk('public')->delete($auction->cover_image);
-            $data['cover_image'] = $request->file('cover_image')->store('auctions', 'public');
+
+            // Delete old cover image
+            if (!empty($auction->cover_image)) {
+                Storage::disk('public')->delete(
+                    ltrim($auction->cover_image, '/')
+                );
+            }
+
+            // Store new cover image as WebP
+            $data['cover_image'] = $this->storeImageAsWebp(
+                $request->file('cover_image'),
+                'auctions'
+            );
         }
 
-        $auction = $this->auctions->update($auction, $data);
+        /*
+        |--------------------------------------------------------------------------
+        | Update Auction
+        |--------------------------------------------------------------------------
+        */
+
+        $auction->update($data);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Add New Gallery Images
+        |--------------------------------------------------------------------------
+        */
 
         if ($request->hasFile('gallery')) {
-            $paths = array_map(fn ($file) => $file->store('auctions', 'public'), $request->file('gallery'));
-            $this->auctions->addGalleryImages($auction, $paths);
+            $paths = [];
+
+            foreach ($request->file('gallery') as $file) {
+                $paths[] = $this->storeImageAsWebp(
+                    $file,
+                    'auctions'
+                );
+            }
+
+            $this->auctions->addGalleryImages(
+                $auction,
+                $paths
+            );
         }
 
-        return $this->success(new AuctionResource($auction->load('images')), 'Auction updated');
+        return $this->success(
+            new AuctionResource(
+                $auction->fresh('images')
+            ),
+            'Auction updated'
+        );
     }
 
     // DELETE /api/admin/auctions/{auction} (admin)
     public function destroy(Auction $auction): JsonResponse
     {
-        Storage::disk('public')->delete($auction->cover_image);
-        foreach ($auction->images as $image) {
-            Storage::disk('public')->delete($image->image);
+        /*
+        |--------------------------------------------------------------------------
+        | Delete Cover Image
+        |--------------------------------------------------------------------------
+        */
+
+        if (!empty($auction->cover_image)) {
+            Storage::disk('public')->delete(
+                ltrim($auction->cover_image, '/')
+            );
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Delete Gallery Images
+        |--------------------------------------------------------------------------
+        */
+
+        foreach ($auction->images as $image) {
+            if (!empty($image->image)) {
+                Storage::disk('public')->delete(
+                    ltrim($image->image, '/')
+                );
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Delete Auction
+        |--------------------------------------------------------------------------
+        */
 
         $this->auctions->delete($auction);
 
-        return $this->success(null, 'Auction deleted');
+        return $this->success(
+            null,
+            'Auction deleted'
+        );
     }
 
     // POST /api/auctions/{auction}/bids (auth)
-    public function placeBid(PlaceBidRequest $request, Auction $auction): JsonResponse
-    {
-        $bid = $this->auctions->placeBid($auction, $request->user()->id, (float) $request->input('amount'));
+    public function placeBid(
+        PlaceBidRequest $request,
+        Auction $auction
+    ): JsonResponse {
+        $amount = (float) $request->input('amount');
 
-        return $this->success(new AuctionBidResource($bid->load('user')), 'Bid placed', 201);
+        $bid = $this->auctions->placeBid(
+            $auction,
+            $request->user()->id,
+            $amount
+        );
+
+        return $this->success(
+            new AuctionBidResource(
+                $bid->load('user')
+            ),
+            'Bid placed',
+            201
+        );
     }
 
     // GET /api/auctions/{auction}/bids (public)
     public function bids(Auction $auction): JsonResponse
     {
-        return $this->success(AuctionBidResource::collection($auction->bids()->with('user')->get()));
+        return $this->success(
+            AuctionBidResource::collection(
+                $auction->bids()
+                    ->with('user')
+                    ->get()
+            )
+        );
     }
 
     // POST /api/admin/auctions/{auction}/close (admin)
     public function close(Auction $auction): JsonResponse
     {
-        return $this->success(new AuctionResource($this->auctions->close($auction)), 'Auction closed');
+        $closedAuction = $this->auctions->close($auction);
+
+        return $this->success(
+            new AuctionResource($closedAuction),
+            'Auction closed'
+        );
     }
 }
