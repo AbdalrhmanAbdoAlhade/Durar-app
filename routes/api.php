@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\ArticleController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -33,6 +34,10 @@ Route::prefix('auth')->group(function () {
 | Public storefront (guests + authenticated customers)
 |--------------------------------------------------------------------------
 */
+
+Route::get('articles', [ArticleController::class, 'index']);
+Route::get('articles/{slug}', [ArticleController::class, 'show']);
+
 Route::get('categories', [CategoryController::class, 'index']);
 Route::get('categories/{category}', [CategoryController::class, 'show']);
 
@@ -88,12 +93,13 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::prefix('admin')->middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::get('categories', [CategoryController::class, 'adminIndex']);
     Route::post('categories', [CategoryController::class, 'store']);
-    Route::put('categories/{category}', [CategoryController::class, 'update']);
+    Route::post('categories/{category}', [CategoryController::class, 'update']);
     Route::delete('categories/{category}', [CategoryController::class, 'destroy']);
 
+  Route::patch('products/{product}/rare', [ProductController::class, 'toggleRare']);
     Route::get('products', [ProductController::class, 'adminIndex']);
     Route::post('products', [ProductController::class, 'store']);
-    Route::put('products/{product}', [ProductController::class, 'update']);
+    Route::post('products/{product}', [ProductController::class, 'update']);
     Route::delete('products/{product}', [ProductController::class, 'destroy']);
     Route::delete('products/{product}/images/{image}', [ProductController::class, 'destroyImage']);
 
@@ -105,16 +111,22 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:admin'])->group(functi
 
     Route::get('banners', [BannerController::class, 'adminIndex']);
     Route::post('banners', [BannerController::class, 'store']);
-    Route::put('banners/{banner}', [BannerController::class, 'update']);
+    Route::post('banners/{banner}', [BannerController::class, 'update']);
     Route::delete('banners/{banner}', [BannerController::class, 'destroy']);
 
     Route::get('reviews/pending', [ReviewController::class, 'pending']);
     Route::post('reviews/{review}/approve', [ReviewController::class, 'approve']);
     Route::delete('reviews/{review}', [ReviewController::class, 'destroy']);
 
+    Route::get('articles', [AticlreController::class, 'adminIndex']);
+    Route::post('articles', [ArticleController::class, 'store']);
+    Route::post('articles/{article}', [ArticleController::class, 'update']);
+    Route::delete('articles/{article}', [ArticleController::class, 'destroy']);
+    Route::delete('articles/{article}/images/{image}', [ArticleController::class, 'destroyImage']);
+  
     Route::get('auctions', [AuctionController::class, 'adminIndex']);
     Route::post('auctions', [AuctionController::class, 'store']);
-    Route::put('auctions/{auction}', [AuctionController::class, 'update']);
+    Route::post('auctions/{auction}', [AuctionController::class, 'update']);
     Route::delete('auctions/{auction}', [AuctionController::class, 'destroy']);
     Route::post('auctions/{auction}/close', [AuctionController::class, 'close']);
 
