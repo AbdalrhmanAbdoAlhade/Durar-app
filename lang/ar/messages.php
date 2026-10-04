@@ -1,0 +1,28 @@
+<?php
+
+return [
+    'success' => 'تمت العملية بنجاح',
+    'error' => 'حدث خطأ',
+    'registered' => 'تم التسجيل بنجاح',
+    'logged_in' => 'تم تسجيل الدخول بنجاح',
+    'logged_out' => 'تم تسجيل الخروج بنجاح',
+    'invalid_credentials' => 'بيانات الدخول غير صحيحة',
+    'item_added_to_cart' => 'تمت إضافة العنصر إلى السلة',
+    'cart_item_updated' => 'تم تحديث عنصر السلة',
+    'item_removed_from_cart' => 'تم حذف العنصر من السلة',
+    'cart_cleared' => 'تم تفريغ السلة',
+    'product_created' => 'تم إنشاء المنتج',
+    'product_updated' => 'تم تحديث المنتج',
+    'product_deleted' => 'تم حذف المنتج',
+    'category_created' => 'تم إنشاء القسم',
+    'category_updated' => 'تم تحديث القسم',
+    'category_deleted' => 'تم حذف القسم',
+    'order_created' => 'تم إنشاء الطلب',
+    'bid_placed' => 'تم تسجيل المزايدة',
+    'coupon_valid' => 'الكوبون صالح',
+    'coupon_invalid' => 'الكوبون غير صالح',
+    'not_found' => 'غير موجود',
+    'unauthorized' => 'غير مصرح',
+    'forbidden' => 'ممنوع',
+    'validation_failed' => 'فشل التحقق من البيانات',
+];

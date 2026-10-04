@@ -1,0 +1,28 @@
+<?php
+
+return [
+    'success' => 'Success',
+    'error' => 'Error',
+    'registered' => 'Registered successfully',
+    'logged_in' => 'Logged in successfully',
+    'logged_out' => 'Logged out successfully',
+    'invalid_credentials' => 'Invalid credentials',
+    'item_added_to_cart' => 'Item added to cart',
+    'cart_item_updated' => 'Cart item updated',
+    'item_removed_from_cart' => 'Item removed from cart',
+    'cart_cleared' => 'Cart cleared',
+    'product_created' => 'Product created',
+    'product_updated' => 'Product updated',
+    'product_deleted' => 'Product deleted',
+    'category_created' => 'Category created',
+    'category_updated' => 'Category updated',
+    'category_deleted' => 'Category deleted',
+    'order_created' => 'Order created',
+    'bid_placed' => 'Bid placed',
+    'coupon_valid' => 'Coupon is valid',
+    'coupon_invalid' => 'Coupon is invalid',
+    'not_found' => 'Not found',
+    'unauthorized' => 'Unauthorized',
+    'forbidden' => 'Forbidden',
+    'validation_failed' => 'Validation failed',
+];
