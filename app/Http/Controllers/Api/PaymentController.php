@@ -36,68 +36,86 @@ class PaymentController extends Controller
         );
     }
 
-    public function edfapayWebhook(Request $request): JsonResponse
-    {
-        $orderNumber = $request->input('order_id');
+  public function edfapayWebhook(Request $request): JsonResponse
+{
+    $orderNumber = $request->input('order_id');
 
-        if (! $orderNumber) {
-            return $this->error('Missing order_id', 422);
-        }
+    if (! $orderNumber) {
+        return $this->error('Missing order_id', 422);
+    }
 
-        $order = Order::where('order_number', $orderNumber)
-            ->with(['latestPayment', 'user', 'reservations'])
-            ->first();
+    $order = Order::where('order_number', $orderNumber)
+        ->with(['latestPayment', 'user', 'reservations'])
+        ->first();
 
-        if (! $order || ! $order->latestPayment) {
-            Log::warning('EdfaPay webhook for unknown order', [
-                'order_id' => $orderNumber,
-            ]);
-
-            return $this->error('Order not found', 404);
-        }
-
-        // منع معالجة مكررة لو الطلب خلاص اتدفع
-        if ($order->payment_status === 'paid') {
-            return $this->success(null, 'Already processed');
-        }
-
-        $verified = $this->edfapay->checkStatus($orderNumber);
-
-        if (! $verified) {
-            Log::error('EdfaPay status re-verification failed', [
-                'order_id' => $orderNumber,
-            ]);
-
-            return $this->error('Could not verify transaction status', 502);
-        }
-
-        $status = strtoupper(
-            (string) ($verified['status'] ?? $verified['action'] ?? '')
-        );
-
-        $isSuccess = in_array($status, ['SUCCESS', 'APPROVED', 'CAPTURED'], true);
-        $isFailed  = in_array($status, ['DECLINED', 'FAILED', 'ERROR'], true);
-
-        $order->latestPayment->update([
-            'transaction_id' => $verified['trans_id']
-                ?? $verified['transactionId']
-                ?? $order->latestPayment->transaction_id,
-            'status' => $isSuccess
-                ? 'success'
-                : ($isFailed ? 'failed' : $order->latestPayment->status),
-            'gateway_response' => $verified,
+    if (! $order || ! $order->latestPayment) {
+        Log::warning('EdfaPay webhook for unknown order', [
+            'order_id' => $orderNumber,
         ]);
+        return $this->error('Order not found', 404);
+    }
 
-        // =====================================================
-        // Payment Success → نفذ الحجز (خصم فعلي من المخزون)
-        // =====================================================
-        if ($isSuccess) {
-            DB::transaction(function () use ($order) {
-                $order->update([
-                    'payment_status' => 'paid',
-                    'status'         => 'processing',
-                ]);
+    // منع معالجة مكررة لو الطلب خلاص اتدفع
+    if ($order->payment_status === 'paid') {
+        return $this->success(null, 'Already processed');
+    }
 
+    $verified = $this->edfapay->checkStatus($orderNumber);
+
+    if (! $verified) {
+        Log::error('EdfaPay status re-verification failed', [
+            'order_id' => $orderNumber,
+        ]);
+        return $this->error('Could not verify transaction status', 502);
+    }
+
+    $status = strtoupper(
+        (string) ($verified['status'] ?? $verified['action'] ?? '')
+    );
+
+    $isSuccess = in_array($status, ['SUCCESS', 'APPROVED', 'CAPTURED'], true);
+    $isFailed  = in_array($status, ['DECLINED', 'FAILED', 'ERROR'], true);
+
+    // تحديث سجل الدفع
+    $order->latestPayment->update([
+        'transaction_id'   => $verified['trans_id']
+            ?? $verified['transactionId']
+            ?? $order->latestPayment->transaction_id,
+        'status'           => $isSuccess
+            ? 'success'
+            : ($isFailed ? 'failed' : $order->latestPayment->status),
+        'gateway_response' => $verified,
+    ]);
+
+    // =====================================================
+    // Payment Success
+    // =====================================================
+    if ($isSuccess) {
+        DB::transaction(function () use ($order) {
+
+            $order->update([
+                'payment_status' => 'paid',
+                'status'         => 'processing',
+            ]);
+
+            // -------------------- تذاكر --------------------
+            if ($order->type === 'ticket') {
+                $booking = \App\Models\TicketBooking::where('order_id', $order->id)
+                    ->with('items.ticket')
+                    ->first();
+
+                if ($booking && $booking->payment_status !== 'paid') {
+                    $bookingCode = app(\App\Services\TicketService::class)->generateBookingCode();
+
+                    $booking->update([
+                        'status'         => 'paid',
+                        'payment_status' => 'paid',
+                        'booking_code'   => $bookingCode,
+                    ]);
+                }
+            }
+            // -------------------- منتجات / مزادات --------------------
+            else {
                 $reservations = $order->reservations()
                     ->where('status', 'reserved')
                     ->lockForUpdate()
@@ -107,40 +125,73 @@ class PaymentController extends Controller
                     $res->product()->decrement('quantity', $res->quantity);
                     $res->update(['status' => 'committed']);
                 }
-            });
+            }
+        });
 
+        // إشعارات النجاح
+        if ($order->user) {
             $this->notifications->sendToUser(
                 $order->user,
                 'تم الدفع بنجاح',
                 "طلبك رقم {$order->order_number} اتدفع بنجاح."
             );
-
-            WhatsAppService::paymentSuccess($order);
         }
 
-        // =====================================================
-        // Payment Failed → حرر الحجز
-        // =====================================================
-        elseif ($isFailed) {
-            DB::transaction(function () use ($order) {
-                $order->update([
-                    'payment_status' => 'failed',
-                ]);
+        WhatsAppService::paymentSuccess($order);
+    }
 
+    // =====================================================
+    // Payment Failed
+    // =====================================================
+    elseif ($isFailed) {
+        DB::transaction(function () use ($order) {
+
+            $order->update([
+                'payment_status' => 'failed',
+            ]);
+
+            // -------------------- تذاكر --------------------
+            if ($order->type === 'ticket') {
+                $booking = \App\Models\TicketBooking::where('order_id', $order->id)
+                    ->with('items.ticket')
+                    ->first();
+
+                if ($booking && $booking->payment_status !== 'failed') {
+                    // إرجاع الكمية
+                    foreach ($booking->items as $item) {
+                        $ticket = $item->ticket;
+
+                        if ($ticket && ! $ticket->isUnlimited()) {
+                            $ticket->increment('quantity', $item->quantity);
+                        }
+                    }
+
+                    $booking->update([
+                        'status'         => 'cancelled',
+                        'payment_status' => 'failed',
+                    ]);
+                }
+            }
+            // -------------------- منتجات --------------------
+            else {
                 $order->reservations()
                     ->where('status', 'reserved')
                     ->update(['status' => 'released']);
-            });
+            }
+        });
 
+        // إشعارات الفشل
+        if ($order->user) {
             $this->notifications->sendToUser(
                 $order->user,
                 'فشلت عملية الدفع',
                 "الدفع لطلبك رقم {$order->order_number} متنفذش. جرب تاني."
             );
-
-            WhatsAppService::paymentFailed($order);
         }
 
-        return $this->success(null, 'Webhook processed');
+        WhatsAppService::paymentFailed($order);
     }
+
+    return $this->success(null, 'Webhook processed');
+}
 }

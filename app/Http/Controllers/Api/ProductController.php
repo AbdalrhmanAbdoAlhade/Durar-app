@@ -46,21 +46,21 @@ class ProductController extends Controller
     }
 
     // GET /api/products/{product} (public)
-  public function show(Product $product): JsonResponse
-{
-    // ===== QR Code (محفوظ في الداتابيز) =====
-    if (empty($product->qr_code)) {
-        $qrPath = $this->generateAndSaveProductQrCode($product->id);
-        $product->update(['qr_code' => $qrPath]);
-        $product->qr_code = $qrPath;
-    }
+    public function show(Product $product): JsonResponse
+    {
+        // ===== QR Code (محفوظ في الداتابيز) =====
+        if (empty($product->qr_code)) {
+            $qrPath = $this->generateAndSaveProductQrCode($product->id);
+            $product->update(['qr_code' => $qrPath]);
+            $product->qr_code = $qrPath;
+        }
 
-    return $this->success(
-        new ProductResource(
-            $product->load(['category', 'images'])
-        )
-    );
-}
+        return $this->success(
+            new ProductResource(
+                $product->load(['category', 'images'])
+            )
+        );
+    }
 
     // GET /api/admin/products (admin)
     public function adminIndex(Request $request): JsonResponse
@@ -94,6 +94,14 @@ class ProductController extends Controller
                 $request->filled('weight_unit'),
                 fn ($q) => $q->where('weight_unit', $request->string('weight_unit'))
             )
+            ->when(
+                $request->filled('is_museum'),
+                fn ($q) => $q->where('is_museum', $request->boolean('is_museum'))
+            )
+            ->when(
+                $request->filled('is_store'),
+                fn ($q) => $q->where('is_store', $request->boolean('is_store'))
+            )
             ->with(['category', 'images'])
             ->latest()
             ->paginate(20);
@@ -101,6 +109,62 @@ class ProductController extends Controller
         return $this->success(
             ProductResource::collection($products)
         );
+    }
+
+    // GET /api/products/museum  (منتجات المتحف فقط)
+    public function museumProducts(Request $request): JsonResponse
+    {
+        $products = Product::query()
+            ->active()
+            ->museum()
+            ->with(['category', 'images'])
+            ->latest()
+            ->paginate($request->integer('per_page', 10));
+
+        return response()->json([
+            'success' => true,
+            'data'    => ProductResource::collection($products)->response()->getData(true)['data'],
+            'meta'    => [
+                'current_page' => $products->currentPage(),
+                'per_page'     => $products->perPage(),
+                'total'        => $products->total(),
+                'last_page'    => $products->lastPage(),
+            ],
+            'links'   => [
+                'first' => $products->url(1),
+                'last'  => $products->url($products->lastPage()),
+                'prev'  => $products->previousPageUrl(),
+                'next'  => $products->nextPageUrl(),
+            ],
+        ]);
+    }
+
+    // GET /api/products/store  (منتجات المتجر فقط)
+    public function storeProducts(Request $request): JsonResponse
+    {
+        $products = Product::query()
+            ->active()
+            ->store()
+            ->with(['category', 'images'])
+            ->latest()
+            ->paginate($request->integer('per_page', 10));
+
+        return response()->json([
+            'success' => true,
+            'data'    => ProductResource::collection($products)->response()->getData(true)['data'],
+            'meta'    => [
+                'current_page' => $products->currentPage(),
+                'per_page'     => $products->perPage(),
+                'total'        => $products->total(),
+                'last_page'    => $products->lastPage(),
+            ],
+            'links'   => [
+                'first' => $products->url(1),
+                'last'  => $products->url($products->lastPage()),
+                'prev'  => $products->previousPageUrl(),
+                'next'  => $products->nextPageUrl(),
+            ],
+        ]);
     }
 
     // POST /api/admin/products (admin)
@@ -208,6 +272,14 @@ class ProductController extends Controller
                 'string',
                 'max:20',
             ],
+            'is_museum' => [
+                'nullable',
+                'boolean',
+            ],
+            'is_store' => [
+                'nullable',
+                'boolean',
+            ],
         ]);
 
         // gallery ليست column في products
@@ -235,10 +307,11 @@ class ProductController extends Controller
         |--------------------------------------------------------------------------
         */
         $product = Product::create($data);
-          // ===== توليد وحفظ الـ QR بعد إنشاء المنتج =====
-          $qrPath = $this->generateAndSaveProductQrCode($product->id);
-          $product->update(['qr_code' => $qrPath]);
-          $product->qr_code = $qrPath;
+
+        // ===== توليد وحفظ الـ QR بعد إنشاء المنتج =====
+        $qrPath = $this->generateAndSaveProductQrCode($product->id);
+        $product->update(['qr_code' => $qrPath]);
+        $product->qr_code = $qrPath;
 
         /*
         |--------------------------------------------------------------------------
@@ -378,6 +451,14 @@ class ProductController extends Controller
                 'string',
                 'max:20',
             ],
+            'is_museum' => [
+                'nullable',
+                'boolean',
+            ],
+            'is_store' => [
+                'nullable',
+                'boolean',
+            ],
         ]);
 
         // gallery ليست column في products
@@ -426,10 +507,11 @@ class ProductController extends Controller
         */
         $product->update($data);
 
-          // ===== إعادة توليد الـ QR =====
-            $qrPath = $this->generateAndSaveProductQrCode($product->id);
-            $product->update(['qr_code' => $qrPath]);
-            $product->qr_code = $qrPath;
+        // ===== إعادة توليد الـ QR =====
+        $qrPath = $this->generateAndSaveProductQrCode($product->id);
+        $product->update(['qr_code' => $qrPath]);
+        $product->qr_code = $qrPath;
+
         /*
         |--------------------------------------------------------------------------
         | Add Gallery Images
@@ -470,12 +552,14 @@ class ProductController extends Controller
                 ltrim($product->cover_image, '/')
             );
         }
+
         // حذف ملف الـ QR
         if (!empty($product->qr_code)) {
             Storage::disk('public')->delete(
                 str_replace('storage/', '', $product->qr_code)
             );
         }
+
         /*
         |--------------------------------------------------------------------------
         | Delete Gallery Images
@@ -589,29 +673,30 @@ class ProductController extends Controller
             $product->is_rare ? 'Marked as rare' : 'Removed from rare'
         );
     }
-  /**
- * توليد وحفظ QR Code للمنتج
- * يرجع المسار النسبي زي: storage/qrcodes/product_239.png
- */
-private function generateAndSaveProductQrCode(int $productId): string
-{
-    $url = "https://your-domain.com/product/{$productId}"; // غيّر الدومين حسب موقعك
-    $filename = "qrcodes/product_{$productId}.png";
 
-    // احذف القديم لو موجود
-    if (Storage::disk('public')->exists($filename)) {
-        Storage::disk('public')->delete($filename);
+    /**
+     * توليد وحفظ QR Code للمنتج
+     * يرجع المسار النسبي زي: storage/qrcodes/product_239.png
+     */
+    private function generateAndSaveProductQrCode(int $productId): string
+    {
+        $url = "https://your-domain.com/product/{$productId}"; // غيّر الدومين حسب موقعك
+        $filename = "qrcodes/product_{$productId}.png";
+
+        // احذف القديم لو موجود
+        if (Storage::disk('public')->exists($filename)) {
+            Storage::disk('public')->delete($filename);
+        }
+
+        // توليد الـ QR وحفظه
+        $qrImage = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')
+            ->size(400)
+            ->margin(1)
+            ->errorCorrection('H')
+            ->generate($url);
+
+        Storage::disk('public')->put($filename, $qrImage);
+
+        return 'storage/' . $filename;
     }
-
-    // توليد الـ QR وحفظه
-    $qrImage = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')
-        ->size(400)
-        ->margin(1)
-        ->errorCorrection('H')
-        ->generate($url);
-
-    Storage::disk('public')->put($filename, $qrImage);
-
-    return 'storage/' . $filename;
-}
 }

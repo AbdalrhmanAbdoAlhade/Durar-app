@@ -112,7 +112,7 @@ class AuctionService
      * meets the minimum next bid, then atomically updates
      * the current price.
      */
-   public function placeBid(
+  public function placeBid(
     Auction $auction,
     int $userId,
     float $amount
@@ -121,13 +121,14 @@ class AuctionService
 
         $auction = Auction::where('id', $auction->id)
             ->lockForUpdate()
-            ->first();
+            ->firstOrFail();
 
         if (! $auction->isBiddable()) {
             abort(422, 'This auction is not open for bidding right now');
         }
 
         $previousTopBid = $auction->bids()
+            ->with('user')
             ->orderByDesc('amount')
             ->first();
 
@@ -140,6 +141,11 @@ class AuctionService
             abort(422, 'Bid amount must be at least ' . $auction->minimumNextBid());
         }
 
+        // هل ده أول مزايدة لليوزر ده على المزاد؟ (لازم قبل الـ create)
+        $isFirstBidOnAuction = ! $auction->bids()
+            ->where('user_id', $userId)
+            ->exists();
+
         $bid = $auction->bids()->create([
             'user_id' => $userId,
             'amount'  => $amount,
@@ -149,8 +155,8 @@ class AuctionService
             'current_price' => $amount,
         ]);
 
-        // إشعار المزايد السابق
-        if ($previousTopBid && $previousTopBid->user_id !== $userId) {
+        // إشعار داخلي للمزايد السابق (آمن، مفيش وتس)
+        if ($previousTopBid) {
             $this->notifications->sendToUser(
                 $previousTopBid->user,
                 'تم تجاوز مزايدتك',
@@ -158,10 +164,15 @@ class AuctionService
             );
         }
 
-        // WhatsApp
-        $user = $bid->load('user')->user;
+        // WhatsApp: مرة واحدة بس عند أول انضمام للمزاد،
+        // وبعد الـ commit عشان لو الترانزاكشن فشلت مايتبعتش حاجة
+        if ($isFirstBidOnAuction) {
+            $bid->load('user');
 
-        WhatsAppService::auctionJoined($user, $auction, $amount);
+            DB::afterCommit(function () use ($bid, $auction, $amount) {
+                WhatsAppService::auctionJoined($bid->user, $auction, $amount);
+            });
+        }
 
         return $bid;
     });
@@ -238,4 +249,5 @@ class AuctionService
 
         return $slug;
     }
+  
 }

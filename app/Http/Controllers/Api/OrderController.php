@@ -15,6 +15,7 @@ use App\Services\WhatsAppService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -26,6 +27,21 @@ class OrderController extends Controller
         protected EdfaPayService $edfapay,
         protected \App\Services\NotificationService $notifications,
     ) {
+    }
+
+    /**
+     * تشغيل إرسال الواتساب بعد إرسال الرد للعميل.
+     * أي فشل بيتسجل في اللوج ومبيأثرش على الطلب.
+     */
+    protected function whatsapp(callable $callback): void
+    {
+        dispatch(function () use ($callback) {
+            try {
+                $callback();
+            } catch (\Throwable $e) {
+                Log::warning('WhatsApp notification failed: ' . $e->getMessage());
+            }
+        })->afterResponse();
     }
 
     // GET /api/orders
@@ -56,16 +72,15 @@ class OrderController extends Controller
     {
         $cart = $this->carts->getOrCreateCart($request);
 
-        // مفيش shipping_fee من الكلاينت — بيتحسب في OrderService
-      $order = $this->orders->checkoutCart(
-    $cart,
-    $request->user()->id,
-    $request->input('shipping_address'),
-    $request->input('coupon_code'),
-    $request->filled('shipping_fee')
-        ? (float) $request->input('shipping_fee')
-        : null   // null → السيرفر يحط 0
-);
+        $order = $this->orders->checkoutCart(
+            $cart,
+            $request->user()->id,
+            $request->input('shipping_address'),
+            $request->input('coupon_code'),
+            $request->filled('shipping_fee')
+                ? (float) $request->input('shipping_fee')
+                : null   // null → السيرفر يحط 0
+        );
 
         $redirectUrl = $this->edfapay->initiate($order, [
             'name'  => $request->user()->name,
@@ -73,7 +88,7 @@ class OrderController extends Controller
             'phone' => $request->user()->phone,
         ]);
 
-        WhatsAppService::orderCreated($order);
+        $this->whatsapp(fn () => WhatsAppService::orderCreated($order));
 
         return $this->success([
             'order'                => new OrderResource($order),
@@ -96,12 +111,42 @@ class OrderController extends Controller
             'phone' => $request->user()->phone,
         ]);
 
-        WhatsAppService::orderCreated($order);
+        $this->whatsapp(fn () => WhatsAppService::orderCreated($order));
 
         return $this->success([
             'order'                => new OrderResource($order),
             'payment_redirect_url' => $redirectUrl,
         ], 'Order created, proceed to payment', 201);
+    }
+
+    /**
+     * POST /api/orders/{order}/cancel
+     */
+    public function cancel(Request $request, Order $order): JsonResponse
+    {
+        if ($order->user_id !== $request->user()->id) {
+            return $this->error('Not found', 404);
+        }
+
+        $cancelled = $this->orders->cancelOrder($order);
+
+        // إشعار داخلي (اختياري: لو فشل ميوقفش الإلغاء)
+        try {
+            $this->notifications->sendToUser(
+                $cancelled->user,
+                'تم إلغاء طلبك',
+                "تم إلغاء طلبك رقم {$cancelled->order_number}"
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Cancel notification failed: ' . $e->getMessage());
+        }
+
+        $this->whatsapp(fn () => WhatsAppService::orderCancelled($cancelled));
+
+        return $this->success(
+            new OrderResource($cancelled),
+            'تم إلغاء الطلب بنجاح'
+        );
     }
 
     // POST /api/orders/{order}/retry-payment
@@ -216,19 +261,23 @@ class OrderController extends Controller
             }
         });
 
-        $this->notifications->sendToUser(
-            $order->user,
-            'تحديث حالة طلبك',
-            "طلبك رقم {$order->order_number} بقى: {$order->status}"
-        );
+        try {
+            $this->notifications->sendToUser(
+                $order->user,
+                'تحديث حالة طلبك',
+                "طلبك رقم {$order->order_number} بقى: {$order->status}"
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Status notification failed: ' . $e->getMessage());
+        }
 
         if ($newStatus === 'shipped') {
-            WhatsAppService::orderShipped($order);
+            $this->whatsapp(fn () => WhatsAppService::orderShipped($order));
         } elseif ($newStatus === 'cancelled') {
-            WhatsAppService::orderCancelled($order);
+            $this->whatsapp(fn () => WhatsAppService::orderCancelled($order));
         } elseif ($newStatus === 'delivered') {
             $reviewUrl = config('app.frontend_url') . '/orders/' . $order->id . '/review';
-            WhatsAppService::reviewRequest($order, $reviewUrl);
+            $this->whatsapp(fn () => WhatsAppService::reviewRequest($order, $reviewUrl));
         }
 
         return $this->success(

@@ -12,12 +12,32 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use App\Services\CategoryService;
+
 
 class CategoryController extends Controller
 {
     use ApiResponseTrait, ImageConverterTrait;
 
-    // GET /api/categories (public)
+    public function __construct(
+        protected CategoryService $categoryService
+    ) {}
+
+    // GET /api/admin/categories (admin)
+    public function adminIndex(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'is_active' => ['nullable', 'in:0,1,true,false'],
+        ]);
+
+        $categories = $this->categoryService->listAll($filters);
+
+        return $this->success(
+            CategoryResource::collection($categories)
+        );
+    }
+
+      // GET /api/categories (public)
     public function index(): JsonResponse
     {
         $categories = Category::active()
@@ -29,6 +49,7 @@ class CategoryController extends Controller
         );
     }
 
+
     // GET /api/categories/{category} (public)
     public function show(Category $category): JsonResponse
     {
@@ -37,19 +58,7 @@ class CategoryController extends Controller
         );
     }
 
-    // GET /api/admin/categories (admin)
-    public function adminIndex(): JsonResponse
-    {
-        $categories = Category::query()
-            ->orderBy('sort_order')
-            ->latest()
-            ->paginate(20);
-
-        return $this->success(
-            CategoryResource::collection($categories)
-        );
-    }
-
+   
     // POST /api/admin/categories (admin)
     public function store(Request $request): JsonResponse
     {

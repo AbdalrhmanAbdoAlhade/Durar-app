@@ -16,12 +16,22 @@ class CategoryService
             ->paginate($perPage);
     }
 
-    public function listAll(int $perPage = 20): LengthAwarePaginator
-    {
-        return Category::query()
-            ->orderBy('sort_order')
-            ->paginate($perPage);
-    }
+  public function listAll(array $filters = [], int $perPage = 20): LengthAwarePaginator
+{
+    return Category::query()
+        ->when(
+            array_key_exists('is_active', $filters)
+                && $filters['is_active'] !== null
+                && $filters['is_active'] !== '',
+            fn ($q) => $q->where(
+                'is_active',
+                filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN)
+            )
+        )
+        ->orderBy('sort_order')
+        ->latest()
+        ->paginate($perPage);
+}
 
     public function find(int $id): Category
     {

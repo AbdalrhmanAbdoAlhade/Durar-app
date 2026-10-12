@@ -10,13 +10,14 @@ use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\CartService;
 use App\Services\WhatsAppService;
+use App\Traits\ApiResponseTrait;
 use App\Traits\ImageConverterTrait;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
@@ -26,29 +27,95 @@ class AuthController extends Controller
 
     public function __construct(
         protected CartService $carts
-    ) {
+    ) {}
+
+    // POST /api/auth/register
+    public function register(RegisterRequest $request): JsonResponse
+    {
+        $user = User::create([
+            'name'     => $request->string('name'),
+            'email'    => $request->string('email'),
+            'phone'    => $request->input('phone'),
+            'password' => Hash::make($request->string('password')),
+        ]);
+
+        // WhatsApp - Account Created (بعد الرد عشان ميستناش)
+        dispatch(fn () => WhatsAppService::accountCreated($user))->afterResponse();
+
+        // دمج سلة الزائر
+        $guestId = $this->carts->resolveGuestId($request);
+        if ($guestId) {
+            $this->carts->mergeGuestCartIntoUser($guestId, $user->id);
+        }
+
+        $token = $user->createToken('api')->plainTextToken;
+
+        return $this->success([
+            'user'  => new UserResource($user),
+            'token' => $token,
+        ], 'Registered successfully', 201);
     }
-  
-  public function updateProfile(UpdateProfileRequest $request): JsonResponse
+
+    // POST /api/auth/login
+    public function login(LoginRequest $request): JsonResponse
+    {
+        $user = User::where('email', $request->string('email'))->first();
+
+        if (! $user || ! Hash::check($request->string('password'), $user->password)) {
+            return $this->error('Invalid credentials', 401);
+        }
+
+        // دمج سلة الزائر
+        $guestId = $this->carts->resolveGuestId($request);
+        if ($guestId) {
+            $this->carts->mergeGuestCartIntoUser($guestId, $user->id);
+        }
+
+        $token = $user->createToken('api')->plainTextToken;
+
+        return $this->success([
+            'user'  => new UserResource($user->load('roles')),
+            'token' => $token,
+        ], 'Logged in successfully');
+    }
+
+    // POST /api/auth/logout
+    public function logout(Request $request): JsonResponse
+    {
+        $token = $request->user()->currentAccessToken();
+
+        if ($token instanceof \Laravel\Sanctum\PersonalAccessToken) {
+            $token->delete();
+        }
+
+        return $this->success(null, 'Logged out successfully');
+    }
+
+    // GET /api/auth/me
+    public function me(Request $request): JsonResponse
+    {
+        return $this->success(
+            new UserResource($request->user()->load('roles'))
+        );
+    }
+
+    // PUT /api/auth/profile
+    public function updateProfile(UpdateProfileRequest $request): JsonResponse
     {
         $user = $request->user();
-
         $data = $request->only(['name', 'email', 'phone']);
 
-        // لو في صورة جديدة
         if ($request->hasFile('avatar')) {
-            // امسح الصورة القديمة لو موجودة
             if ($user->avatar) {
                 Storage::disk('public')->delete(ltrim($user->avatar, '/'));
             }
 
-            // خزّن الصورة الجديدة كـ WebP
             $data['avatar'] = $this->storeImageAsWebp(
                 $request->file('avatar'),
-                'avatars',      // المجلد
-                85,            // الجودة
-                800,           // أقصى عرض
-                800            // أقصى ارتفاع
+                'avatars',
+                85,
+                800,
+                800
             );
         }
 
@@ -59,7 +126,7 @@ class AuthController extends Controller
             'Profile updated successfully'
         );
     }
-  
+
     // POST /api/auth/forgot-password
     public function forgotPassword(Request $request): JsonResponse
     {
@@ -98,7 +165,26 @@ class AuthController extends Controller
             ? $this->success(null, __($status))
             : $this->error(__($status), 422);
     }
+	
+  	// DELETE /api/auth/account
+      public function deleteAccount(Request $request): JsonResponse
+      {
+          $user = $request->user();
 
+          // حذف صورة البروفايل لو موجودة
+          if ($user->avatar) {
+              Storage::disk('public')->delete(ltrim($user->avatar, '/'));
+          }
+
+          // حذف كل التوكنات
+          $user->tokens()->delete();
+
+          // حذف الحساب نهائيًا
+          $user->delete();
+
+          return $this->success(null, 'تم حذف الحساب نهائيًا');
+      }
+  	
     // PUT /api/auth/password
     public function changePassword(Request $request): JsonResponse
     {
@@ -123,75 +209,5 @@ class AuthController extends Controller
             ->delete();
 
         return $this->success(null, 'Password changed successfully');
-    }
-  
-    // POST /api/auth/register
-    public function register(RegisterRequest $request): JsonResponse
-    {
-        $user = User::create([
-            'name'     => $request->string('name'),
-            'email'    => $request->string('email'),
-            'phone'    => $request->input('phone'),
-            'password' => Hash::make($request->string('password')),
-        ]);
-
-        // WhatsApp - Account Created (بعد الرد، عشان الـ register ميستناش واتساب)
-        dispatch(fn () => WhatsAppService::accountCreated($user))->afterResponse();
-
-        // دمج سلة الزائر (ويب أو موبايل)
-        $this->carts->mergeGuestCartIntoUser(
-            $this->carts->resolveGuestId($request),
-            $user->id
-        );
-
-        $token = $user->createToken('api')->plainTextToken;
-
-        return $this->success([
-            'user'  => new UserResource($user),
-            'token' => $token,
-        ], 'Registered successfully', 201);
-    }
-
-    // POST /api/auth/login
-    public function login(LoginRequest $request): JsonResponse
-    {
-        $user = User::where('email', $request->string('email'))->first();
-
-        if (! $user || ! Hash::check($request->string('password'), $user->password)) {
-            return $this->error('Invalid credentials', 401);
-        }
-
-        // دمج سلة الزائر (ويب أو موبايل)
-        $this->carts->mergeGuestCartIntoUser(
-            $this->carts->resolveGuestId($request),
-            $user->id
-        );
-
-        $token = $user->createToken('api')->plainTextToken;
-
-        return $this->success([
-            'user'  => new UserResource($user->load('roles')),
-            'token' => $token,
-        ], 'Logged in successfully');
-    }
-
-    // POST /api/auth/logout (auth)
-    public function logout(Request $request): JsonResponse
-    {
-        $token = $request->user()->currentAccessToken();
-
-        if ($token instanceof \Laravel\Sanctum\PersonalAccessToken) {
-            $token->delete();
-        }
-
-        return $this->success(null, 'Logged out successfully');
-    }
-
-    // GET /api/auth/me (auth)
-    public function me(Request $request): JsonResponse
-    {
-        return $this->success(
-            new UserResource($request->user()->load('roles'))
-        );
     }
 }

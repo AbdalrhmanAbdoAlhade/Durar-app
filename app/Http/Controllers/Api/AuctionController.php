@@ -49,16 +49,22 @@ class AuctionController extends Controller
         );
     }
 
-    // GET /api/admin/auctions (admin)
-    public function adminIndex(): JsonResponse
-    {
-        return $this->success(
-            AuctionResource::collection(
-                $this->auctions->listAll()
-            )
-        );
-    }
+// GET /api/admin/auctions?status=active|upcoming|ended|all
+public function adminIndex(Request $request): JsonResponse
+{
+    $status = $request->string('status')->value() ?: 'all';
 
+    $auctions = match ($status) {
+        'active'   => $this->auctions->listActive(),
+        'upcoming' => $this->auctions->listUpcoming(),
+        'ended'    => $this->auctions->listEnded(),
+        default    => $this->auctions->listAll(),
+    };
+
+    return $this->success(
+        AuctionResource::collection($auctions)
+    );
+}
     // POST /api/admin/auctions (admin)
     public function store(
         StoreAuctionRequest $request
@@ -244,26 +250,26 @@ class AuctionController extends Controller
     }
 
     // POST /api/auctions/{auction}/bids (auth)
-    public function placeBid(
-        PlaceBidRequest $request,
-        Auction $auction
-    ): JsonResponse {
-        $amount = (float) $request->input('amount');
+public function placeBid(
+    PlaceBidRequest $request,
+    Auction $auction
+): JsonResponse {
+    $amount = (float) $request->input('amount');
 
-        $bid = $this->auctions->placeBid(
-            $auction,
-            $request->user()->id,
-            $amount
-        );
+    $bid = $this->auctions->placeBid(
+        $auction,
+        $request->user()->id,
+        $amount
+    );
 
-        return $this->success(
-            new AuctionBidResource(
-                $bid->load('user')
-            ),
-            'Bid placed',
-            201
-        );
-    }
+    return $this->success(
+        new AuctionBidResource(
+            $bid->load('user')
+        ),
+        'Bid placed',
+        201
+    );
+}
 
     // GET /api/auctions/{auction}/bids (public)
     public function bids(Auction $auction): JsonResponse

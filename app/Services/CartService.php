@@ -8,22 +8,32 @@ use Illuminate\Http\Request;
 
 class CartService
 {
-    public function getOrCreateCart(Request $request): Cart
-    {
-        // مستخدم مسجل دخول
-        if ($request->user()) {
-            return Cart::firstOrCreate(['user_id' => $request->user()->id]);
+
+public function getOrCreateCart(Request $request): Cart
+{
+    // يشتغل حتى لو الروت من غير middleware auth
+    $user = auth('sanctum')->user();
+
+    if ($user) {
+        $cart = Cart::firstOrCreate(['user_id' => $user->id]);
+
+        // دمج احتياطي لو لسه فيه كارت زائر
+        $guestId = $this->resolveGuestId($request);
+        if ($guestId) {
+            $this->mergeGuestCartIntoUser($guestId, $user->id);
+            $cart = $cart->fresh(['items.product']);
         }
 
-        // زائر (ويب أو موبايل)
-        $guestId = $this->resolveGuestId($request);
-
-        return Cart::firstOrCreate([
-            'session_id' => $guestId,
-            'user_id'    => null,
-        ]);
+        return $cart;
     }
 
+    $guestId = $this->resolveGuestId($request);
+
+    return Cart::firstOrCreate([
+        'session_id' => $guestId,
+        'user_id'    => null,
+    ]);
+}
     /**
      * يجيب معرف الزائر من:
      * 1. Header: X-Device-Id أو X-Cart-Token

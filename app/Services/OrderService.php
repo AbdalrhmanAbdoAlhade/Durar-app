@@ -14,7 +14,46 @@ class OrderService
     public function __construct(protected CouponService $coupons)
     {
     }
+		
+  	/**
+ * إلغاء طلب من صاحبه
+ */
+    public function cancelOrder(Order $order): Order
+    {
+        if ($order->status === 'cancelled') {
+            abort(422, 'الطلب ملغي مسبقاً');
+        }
 
+        if (in_array($order->status, ['shipped', 'delivered'])) {
+            abort(422, 'لا يمكن إلغاء طلب تم شحنه أو تسليمه');
+        }
+
+        return DB::transaction(function () use ($order) {
+            $order->update([
+                'status'         => 'cancelled',
+                // لو عايز تخلي الدفع failed كمان:
+                // 'payment_status' => $order->payment_status === 'paid' ? 'refunded' : 'failed',
+            ]);
+
+            // تحرير حجوزات المخزون
+            $committed = $order->reservations()
+                ->where('status', 'committed')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($committed as $res) {
+                $res->product()->increment('quantity', $res->quantity);
+                $res->update(['status' => 'released']);
+            }
+
+            $order->reservations()
+                ->where('status', 'reserved')
+                ->update(['status' => 'released']);
+
+            return $order->fresh(['items.product', 'coupon', 'auction']);
+        });
+    }
+  	
     /**
      * Checkout the given cart into an order. Validates stock, applies an optional
      * category-scoped coupon, decrements stock, and opens a pending payment record.

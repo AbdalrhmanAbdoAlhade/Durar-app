@@ -36,10 +36,13 @@ class ReviewService
         Product::findOrFail($productId);
 
         return Review::updateOrCreate(
-            ['product_id' => $productId, 'user_id' => $userId],
             [
-                'rating' => $data['rating'],
-                'comment' => $data['comment'] ?? null,
+                'product_id' => $productId,
+                'user_id'    => $userId,
+            ],
+            [
+                'rating'      => $data['rating'],
+                'comment'     => $data['comment'] ?? null,
                 'is_approved' => false,
             ]
         );
@@ -55,7 +58,7 @@ class ReviewService
             'تقييمك للمنتج بقى ظاهر للجميع، شكرًا لمشاركتك.'
         );
 
-        return $review;
+        return $review->load(['user', 'product']);
     }
 
     public function reject(Review $review): void

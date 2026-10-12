@@ -28,6 +28,8 @@ class UpdateProductRequest extends FormRequest
             'metadata' => ['nullable', 'array'],
             'is_active' => ['nullable', 'boolean'],
             'is_rare' => ['nullable', 'boolean'],
+          	'is_museum' => ['nullable', 'boolean'],
+            'is_store'  => ['nullable', 'boolean'],
 
             // ===== الحقول الجديدة =====
             'classification' => ['nullable', 'string', 'max:255'],

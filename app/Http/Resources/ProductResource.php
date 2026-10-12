@@ -26,6 +26,8 @@ class ProductResource extends JsonResource
             'is_active'           => $this->is_active,
             'is_rare'             => (bool) $this->is_rare,
             'sales_count'         => (int) $this->sales_count,
+              'is_museum' => (bool) $this->is_museum,
+              'is_store'  => (bool) $this->is_store,
             // حقول إضافية إن وُجدت
             'classification'      => $this->classification ?? null,
             'hardness'            => $this->hardness ?? null,

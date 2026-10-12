@@ -257,4 +257,236 @@ class WhatsAppService
 
         return trim($body) ?: $message;
     }
+  /**
+ * لما المستخدم يدخل مزايدة
+ */
+public static function auctionJoined($user, $auction, float $amount): void
+{
+    if (empty($user->phone)) {
+        return;
+    }
+
+    try {
+        $message = "تم تسجيل مزايدتك بنجاح ✅\n"
+            . "المزاد: {$auction->name_ar}\n"
+            . "قيمة المزايدة: {$amount} ر.س\n"
+            . "حظاً موفقاً 💎";
+
+        static::sendMessage($user->phone, $message);
+    } catch (\Throwable $e) {
+        Log::warning('WhatsApp auctionJoined failed: ' . $e->getMessage(), [
+            'user_id' => $user->id ?? null,
+        ]);
+    }
+}
+
+/**
+ * لما المستخدم يكسب المزاد
+ */
+public static function auctionWon($user, $auction, float $amount): void
+{
+    if (empty($user->phone)) {
+        return;
+    }
+
+    try {
+        $message = "مبروك! 🎉\n"
+            . "لقد فزت بالمزاد: {$auction->name_ar}\n"
+            . "السعر النهائي: {$amount} ر.س\n"
+            . "يرجى إكمال الدفع لتأكيد الطلب.";
+
+        static::sendMessage($user->phone, $message);
+    } catch (\Throwable $e) {
+        Log::warning('WhatsApp auctionWon failed: ' . $e->getMessage(), [
+            'user_id' => $user->id ?? null,
+        ]);
+    }
+}
+
+/**
+ * نجاح الدفع
+ */
+public static function paymentSuccess($order): void
+{
+    $phone = $order->user?->phone ?? null;
+
+    // لو طلب تذاكر وGuest، نحاول نجيب الرقم من الحجز
+    if (! $phone && $order->type === 'ticket') {
+        $booking = \App\Models\TicketBooking::where('order_id', $order->id)->first();
+        $phone = $booking?->phone;
+    }
+
+    if (empty($phone)) {
+        return;
+    }
+
+    try {
+        $message = "تم الدفع بنجاح ✅\n"
+            . "رقم الطلب: {$order->order_number}\n"
+            . "المبلغ: {$order->total} ر.س\n"
+            . "شكراً لثقتك بنا 💎";
+
+        // لو تذكرة، نضيف كود الحجز
+        if ($order->type === 'ticket') {
+            $booking = \App\Models\TicketBooking::where('order_id', $order->id)->first();
+            if ($booking?->booking_code) {
+                $message .= "\nكود الحجز: {$booking->booking_code}";
+            }
+        }
+
+        static::sendMessage($phone, $message);
+    } catch (\Throwable $e) {
+        Log::warning('WhatsApp paymentSuccess failed: ' . $e->getMessage(), [
+            'order_id' => $order->id ?? null,
+        ]);
+    }
+}
+
+/**
+ * فشل الدفع
+ */
+public static function paymentFailed($order): void
+{
+    $phone = $order->user?->phone ?? null;
+
+    if (! $phone && $order->type === 'ticket') {
+        $booking = \App\Models\TicketBooking::where('order_id', $order->id)->first();
+        $phone = $booking?->phone;
+    }
+
+    if (empty($phone)) {
+        return;
+    }
+
+    try {
+        $message = "فشلت عملية الدفع ❌\n"
+            . "رقم الطلب: {$order->order_number}\n"
+            . "يرجى المحاولة مرة أخرى.";
+
+        static::sendMessage($phone, $message);
+    } catch (\Throwable $e) {
+        Log::warning('WhatsApp paymentFailed failed: ' . $e->getMessage(), [
+            'order_id' => $order->id ?? null,
+        ]);
+    }
+}
+  
+      /**
+     * جلب رقم العميل من الطلب (من اليوزر أو من عنوان الشحن)
+     */
+    protected static function orderPhone($order): ?string
+    {
+        $phone = $order->user?->phone;
+
+        if (empty($phone) && is_array($order->shipping_address)) {
+            $phone = $order->shipping_address['phone'] ?? null;
+        }
+
+        return empty($phone) ? null : $phone;
+    }
+
+    /**
+     * تم إنشاء الطلب
+     */
+    public static function orderCreated($order): void
+    {
+        $phone = static::orderPhone($order);
+
+        if (! $phone) {
+            return;
+        }
+
+        try {
+            $message = "تم استلام طلبك ✅\n"
+                . "رقم الطلب: {$order->order_number}\n"
+                . "الإجمالي: {$order->total} ر.س\n"
+                . "يرجى إتمام الدفع لتأكيد الطلب.";
+
+            $result = static::sendMessage($phone, $message);
+
+            if (! ($result['success'] ?? false)) {
+                Log::warning('WhatsApp orderCreated not sent', [
+                    'order_id' => $order->id ?? null,
+                    'result'   => $result,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp orderCreated failed: ' . $e->getMessage(), [
+                'order_id' => $order->id ?? null,
+            ]);
+        }
+    }
+
+    /**
+     * تم إلغاء الطلب
+     */
+    public static function orderCancelled($order): void
+    {
+        $phone = static::orderPhone($order);
+
+        if (! $phone) {
+            return;
+        }
+
+        try {
+            $message = "تم إلغاء طلبك ❌\n"
+                . "رقم الطلب: {$order->order_number}\n"
+                . "لو عندك أي استفسار تواصل معنا.";
+
+            static::sendMessage($phone, $message);
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp orderCancelled failed: ' . $e->getMessage(), [
+                'order_id' => $order->id ?? null,
+            ]);
+        }
+    }
+
+    /**
+     * تم شحن الطلب
+     */
+    public static function orderShipped($order): void
+    {
+        $phone = static::orderPhone($order);
+
+        if (! $phone) {
+            return;
+        }
+
+        try {
+            $message = "تم شحن طلبك 🚚\n"
+                . "رقم الطلب: {$order->order_number}\n"
+                . "هيوصلك قريباً بإذن الله 💎";
+
+            static::sendMessage($phone, $message);
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp orderShipped failed: ' . $e->getMessage(), [
+                'order_id' => $order->id ?? null,
+            ]);
+        }
+    }
+
+    /**
+     * طلب تقييم بعد التسليم
+     */
+    public static function reviewRequest($order, string $reviewUrl): void
+    {
+        $phone = static::orderPhone($order);
+
+        if (! $phone) {
+            return;
+        }
+
+        try {
+            $message = "تم تسليم طلبك 🎉\n"
+                . "رقم الطلب: {$order->order_number}\n"
+                . "رأيك يهمنا، قيّم تجربتك من هنا:\n"
+                . $reviewUrl;
+
+            static::sendMessage($phone, $message);
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp reviewRequest failed: ' . $e->getMessage(), [
+                'order_id' => $order->id ?? null,
+            ]);
+        }
+    }
 }
