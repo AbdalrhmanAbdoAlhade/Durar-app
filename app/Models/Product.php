@@ -36,6 +36,9 @@ class Product extends Model
         'origin_details',
         'weight',
         'weight_unit',
+        'is_museum',
+        'is_store',
+        'qr_code',
     ];
 
     protected $casts = [
@@ -47,6 +50,8 @@ class Product extends Model
         'metadata'            => 'array',
         'is_active'           => 'boolean',
         'weight'              => 'decimal:2',
+        'is_museum'           => 'boolean',
+        'is_store'            => 'boolean',
     ];
 
     public function category(): BelongsTo
@@ -102,6 +107,18 @@ class Product extends Model
     public function scopeRare($query)
     {
         return $query->where('is_rare', true);
+    }
+
+    // منتجات المتحف فقط
+    public function scopeMuseum($query)
+    {
+        return $query->where('is_museum', true);
+    }
+
+    // منتجات المتجر فقط
+    public function scopeStore($query)
+    {
+        return $query->where('is_store', true);
     }
 
     public function getNameAttribute(): string
